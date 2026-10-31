@@ -41,19 +41,85 @@
           <option value="deal">Buon affare</option>
         </select>
       </div>
-      <div class="col-6 col-md-2">
+      <div class="col-6 col-md-3">
         <label class="form-label">Prezzo soglia</label>
         <input id="a_target_price" type="number" class="form-control" placeholder="120">
       </div>
-      <div class="col-6 col-md-2">
+      <div class="col-6 col-md-3">
         <label class="form-label">Valuta</label>
         <input id="a_currency" class="form-control text-uppercase" maxlength="3" value="EUR">
       </div>
-      <div class="col-12 col-md-2 d-grid align-self-end">
-        <button class="btn btn-success" type="submit">Crea</button>
+    </div>
+
+    <hr class="my-3">
+    <button class="btn btn-sm btn-outline-secondary mb-3" type="button"
+            data-bs-toggle="collapse" data-bs-target="#advAlert">Opzioni avanzate ▾</button>
+    <div class="collapse" id="advAlert">
+      <div class="row g-3">
+        <div class="col-6 col-md-3">
+          <label class="form-label">Tipo viaggio</label>
+          <select id="a_trip_type" class="form-select">
+            <option value="round_trip">Andata e ritorno</option>
+            <option value="one_way">Solo andata</option>
+            <option value="same_day">In giornata</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Orizzonte (mesi)</label>
+          <input id="a_horizon" type="number" min="1" max="12" class="form-control" placeholder="vuoto = date fisse">
+          <div class="form-text">Se valorizzato, cerca nei prossimi N mesi (si sposta ogni settimana).</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Scali max</label>
+          <input id="a_max_stops" type="number" min="0" max="3" class="form-control" placeholder="qualsiasi">
+        </div>
+        <div class="col-12">
+          <label class="form-label d-block">Giorni di partenza</label>
+          <div class="btn-group btn-group-sm flex-wrap" role="group" id="a_depart_dows">
+            <input type="checkbox" class="btn-check" id="dd1" value="1"><label class="btn btn-outline-primary" for="dd1">Lun</label>
+            <input type="checkbox" class="btn-check" id="dd2" value="2"><label class="btn btn-outline-primary" for="dd2">Mar</label>
+            <input type="checkbox" class="btn-check" id="dd3" value="3"><label class="btn btn-outline-primary" for="dd3">Mer</label>
+            <input type="checkbox" class="btn-check" id="dd4" value="4"><label class="btn btn-outline-primary" for="dd4">Gio</label>
+            <input type="checkbox" class="btn-check" id="dd5" value="5"><label class="btn btn-outline-primary" for="dd5">Ven</label>
+            <input type="checkbox" class="btn-check" id="dd6" value="6"><label class="btn btn-outline-primary" for="dd6">Sab</label>
+            <input type="checkbox" class="btn-check" id="dd7" value="7"><label class="btn btn-outline-primary" for="dd7">Dom</label>
+          </div>
+        </div>
+        <div class="col-12" data-ret-only>
+          <label class="form-label d-block">Giorni di ritorno</label>
+          <div class="btn-group btn-group-sm flex-wrap" role="group" id="a_return_dows">
+            <input type="checkbox" class="btn-check" id="rd1" value="1"><label class="btn btn-outline-secondary" for="rd1">Lun</label>
+            <input type="checkbox" class="btn-check" id="rd2" value="2"><label class="btn btn-outline-secondary" for="rd2">Mar</label>
+            <input type="checkbox" class="btn-check" id="rd3" value="3"><label class="btn btn-outline-secondary" for="rd3">Mer</label>
+            <input type="checkbox" class="btn-check" id="rd4" value="4"><label class="btn btn-outline-secondary" for="rd4">Gio</label>
+            <input type="checkbox" class="btn-check" id="rd5" value="5"><label class="btn btn-outline-secondary" for="rd5">Ven</label>
+            <input type="checkbox" class="btn-check" id="rd6" value="6"><label class="btn btn-outline-secondary" for="rd6">Sab</label>
+            <input type="checkbox" class="btn-check" id="rd7" value="7"><label class="btn btn-outline-secondary" for="rd7">Dom</label>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Partenza dalle</label>
+          <input id="a_depart_time_from" type="time" class="form-control">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Partenza entro</label>
+          <input id="a_depart_time_to" type="time" class="form-control">
+        </div>
+        <div class="col-6 col-md-3" data-ret-only>
+          <label class="form-label">Ritorno dalle</label>
+          <input id="a_return_time_from" type="time" class="form-control">
+        </div>
+        <div class="col-6 col-md-3" data-ret-only>
+          <label class="form-label">Ritorno entro</label>
+          <input id="a_return_time_to" type="time" class="form-control">
+        </div>
       </div>
     </div>
-    <div id="alertFormError" class="text-danger small mt-2"></div>
+
+    <div class="d-flex align-items-center gap-3 mt-3">
+      <button class="btn btn-success" type="submit">Crea</button>
+      <div id="alertFormError" class="text-danger small"></div>
+    </div>
   </form>
 </div>
 

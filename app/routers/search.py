@@ -19,20 +19,24 @@ def search(origin: str, destination: str, departDate: str,
            currency: str = "EUR", _user=Depends(get_current_user)):
     svc = _service()
     offers = svc.search_offers(origin.upper(), destination.upper(), departDate,
-                               returnDate, adults, currency.upper())
+                               returnDate, adults, currency.upper(), include_live=True)
     return {"query": {"origin": origin, "destination": destination, "date": departDate},
             "offers": [o.model_dump() for o in offers],
-            "providers": [p.name for p in svc.enabled_providers], "fresh": True}
+            "providers": svc.last_providers, "fresh": True}
 
 
 @router.get("/explore")
 def explore(origin: str, maxPrice: float | None = None, currency: str = "EUR",
             _user=Depends(get_current_user)):
     svc = _service()
-    deals = svc.explore(origin.upper(), maxPrice, currency.upper())
+    deals = svc.explore(origin.upper(), maxPrice, currency.upper(),
+                        live_top_n=settings.EXPLORE_LIVE_TOP_N)
+    providers = [p.name for p in svc.enabled_providers]
+    if settings.EXPLORE_LIVE_TOP_N and svc.enabled_live_providers:
+        providers += [p.name for p in svc.enabled_live_providers]
     return {"query": {"origin": origin, "maxPrice": maxPrice},
             "destinations": [d.model_dump() for d in deals],
-            "providers": [p.name for p in svc.enabled_providers], "fresh": True}
+            "providers": providers, "fresh": True}
 
 
 @router.get("/cheapest-dates")

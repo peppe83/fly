@@ -31,6 +31,36 @@
       <button class="btn btn-primary mt-3" type="submit">Salva</button>
       <div id="prefsMsg" class="small mt-2"></div>
     </form>
+
+    <form id="pwdForm" class="card card-body shadow-sm mt-4">
+      <h2 class="h6 mb-3">Cambia password</h2>
+      <div class="mb-3">
+        <label class="form-label">Password attuale</label>
+        <div class="input-group">
+          <input id="pw_current" type="password" class="form-control" autocomplete="current-password" required>
+          <button class="btn btn-outline-secondary" type="button" data-pw-toggle="pw_current" aria-label="Mostra password"></button>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-12 col-sm-6">
+          <label class="form-label">Nuova password</label>
+          <div class="input-group">
+            <input id="pw_new" type="password" class="form-control" autocomplete="new-password" minlength="8" required>
+            <button class="btn btn-outline-secondary" type="button" data-pw-toggle="pw_new" aria-label="Mostra password"></button>
+          </div>
+          <div class="form-text">Almeno 8 caratteri.</div>
+        </div>
+        <div class="col-12 col-sm-6">
+          <label class="form-label">Conferma nuova password</label>
+          <div class="input-group">
+            <input id="pw_confirm" type="password" class="form-control" autocomplete="new-password" minlength="8" required>
+            <button class="btn btn-outline-secondary" type="button" data-pw-toggle="pw_confirm" aria-label="Mostra password"></button>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-outline-primary mt-3" type="submit">Aggiorna password</button>
+      <div id="pwdMsg" class="small mt-2"></div>
+    </form>
   </div>
 </div>
 {% endblock %}

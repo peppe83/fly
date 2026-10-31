@@ -151,5 +151,7 @@ def run_worker() -> None:
 if __name__ == "__main__":
     # assicura che le tabelle esistano anche se il worker gira per primo
     from .db import Base
+    from .migrations import run_migrations
     Base.metadata.create_all(engine)
+    run_migrations(engine)
     run_worker()

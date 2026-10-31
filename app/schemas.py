@@ -17,10 +17,16 @@ class AlertCreate(BaseModel):
     adults: int = 1
     cabin: str = "ECONOMY"
     max_stops: Optional[int] = None
+    trip_type: str = "round_trip"           # round_trip | one_way | same_day
+    horizon_months: Optional[int] = None    # orizzonte scorrevole (mesi); None = finestra fissa
     depart_dow: Optional[int] = None
     return_dow: Optional[int] = None
+    depart_dows: Optional[str] = None        # CSV ISO, es. "5,6"
+    return_dows: Optional[str] = None
     depart_time_from: Optional[str] = None
     depart_time_to: Optional[str] = None
+    return_time_from: Optional[str] = None
+    return_time_to: Optional[str] = None
     target_price: Optional[float] = None
     currency: str = "EUR"
     strategy: str = "threshold"
@@ -50,6 +56,11 @@ class PreferencesUpdate(BaseModel):
     poll_interval_hours: int
     currency: str = "EUR"
     timezone: str = "Europe/Rome"
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class RoleUpdate(BaseModel):

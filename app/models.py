@@ -52,10 +52,21 @@ class Alert(Base):
     adults: Mapped[int] = mapped_column(Integer, default=1)
     cabin: Mapped[str] = mapped_column(String(20), default="ECONOMY")
     max_stops: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    depart_dow: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 1=Lun..7=Dom
+    # Tipo di viaggio: round_trip (A/R) | one_way (solo andata) | same_day (in giornata)
+    trip_type: Mapped[str] = mapped_column(String(12), default="round_trip")
+    # Orizzonte scorrevole in mesi: se valorizzato il worker scandisce le date dei
+    # prossimi N mesi a partire da oggi (si "sposta" da solo a ogni run). Se NULL usa
+    # la finestra fissa depart_from..depart_to.
+    horizon_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    depart_dow: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 1=Lun..7=Dom (legacy, 1 giorno)
     return_dow: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Giorni della settimana ammessi, CSV ISO (es. "5,6" = Ven+Sab). Hanno priorità sul singolo.
+    depart_dows: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    return_dows: Mapped[str | None] = mapped_column(String(20), nullable=True)
     depart_time_from: Mapped[str | None] = mapped_column(String(5), nullable=True)  # 'HH:MM'
     depart_time_to: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    return_time_from: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    return_time_to: Mapped[str | None] = mapped_column(String(5), nullable=True)
     target_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     strategy: Mapped[str] = mapped_column(String(20), default="threshold")   # threshold|drop|deal

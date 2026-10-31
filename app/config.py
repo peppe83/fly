@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     TRAVELPAYOUTS_BASE_URL: str = "https://api.travelpayouts.com"
     TRAVELPAYOUTS_CURRENCY: str = "eur"
 
+    # SerpApi — Google Flights (fonte LIVE per la ricerca on-demand della dashboard).
+    # Gli alert restano su Travelpayouts per non consumare la quota a pagamento.
+    SERPAPI_KEY: str = ""
+    SERPAPI_BASE_URL: str = "https://serpapi.com"
+    SERPAPI_TIMEOUT_SECONDS: int = 30
+    # "Ovunque" ibrido: Travelpayouts scopre le mete, SerpApi riprezza le prime N
+    # con prezzi reali. 0 = disattiva la riprezzatura live (solo prezzi indicativi).
+    EXPLORE_LIVE_TOP_N: int = 5
+
     # Email (Gmail)
     GMAIL_USER: str = ""
     GMAIL_APP_PASSWORD: str = ""
@@ -55,6 +64,11 @@ class Settings(BaseSettings):
     WORKER_LOCK_NAME: str = "flynotify_worker"
     CALL_BUDGET_SOFT_LIMIT: int = 2000
     FIRST_CHECK_ON_CREATE: bool = True
+    # Tetto di date-candidate interrogate per alert in un run. ANY (ovunque) è più
+    # basso perché ogni data è già una chiamata multi-destinazione. Dimensionati per
+    # coprire ~6 mesi di weekend: Sab+Dom ~52, Ven o Sab ~26.
+    ALERT_MAX_CANDIDATES: int = 62
+    ALERT_MAX_ANY_CANDIDATES: int = 56
 
     # Tetti di piano
     MAX_USERS: int = 50

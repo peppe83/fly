@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .db import Base, engine
 from .deps import NotAuthenticated
+from .migrations import run_migrations
 from .routers import admin, alerts, auth, pages, prefs, search
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    run_migrations(engine)
     yield
 
 

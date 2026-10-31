@@ -22,11 +22,19 @@ class FlightOffer(BaseModel):
     stops: Optional[int] = None
     duration: Optional[str] = None
     carriers: list[str] = []
+    depart_time: Optional[str] = None   # orario partenza (HH:MM)
+    return_time: Optional[str] = None   # orario ritorno (HH:MM)
     source: Source
 
     @property
     def dedupe_key(self) -> str:
-        return f"{self.origin}-{self.destination}-{self.depart_date}-{self.return_date}"
+        base = f"{self.origin}-{self.destination}-{self.depart_date}-{self.return_date}"
+        # Le fonti live (SerpApi) restituiscono più voli per la stessa data/tratta:
+        # con l'orario li teniamo distinti; le fonti a catalogo (1/data) restano invariate.
+        if self.depart_time:
+            carrier = self.carriers[0] if self.carriers else ""
+            return f"{base}-{self.depart_time}-{carrier}-{self.price}"
+        return base
 
 
 class DestinationDeal(BaseModel):
@@ -65,7 +73,14 @@ class FlightProvider(ABC):
 
     def search_offers(self, origin: str, destination: str, depart_date: str,
                       return_date: str | None = None, adults: int = 1,
-                      currency: str = "EUR") -> list[FlightOffer]:
+                      currency: str = "EUR", exact_date: bool = False) -> list[FlightOffer]:
+        return []
+
+    def offers_from_origin(self, origin: str, depart_date: str,
+                           return_date: str | None = None, adults: int = 1,
+                           currency: str = "EUR", limit: int = 30) -> list[FlightOffer]:
+        """Voli più economici dall'origine verso QUALSIASI destinazione per una
+        data esatta (usato dagli alert "ovunque"). Default: nessun risultato."""
         return []
 
     def inspiration_search(self, origin: str, max_price: float | None = None,
