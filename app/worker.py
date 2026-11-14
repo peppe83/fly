@@ -28,6 +28,13 @@ log = logging.getLogger("flynotify.worker")
 _REASON = {"below_target": "sotto soglia", "price_drop": "prezzo in calo", "good_deal": "buon affare"}
 
 
+def _fmt_date(s: str | None) -> str:
+    """Data ISO (AAAA-MM-GG) -> gg-mm-aaaa per la email. Lascia intatto il resto."""
+    if s and len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return f"{s[8:10]}-{s[5:7]}-{s[0:4]}"
+    return s or ""
+
+
 def _is_due(user: User, now: datetime) -> bool:
     if user.last_run_at is None:
         return True
@@ -106,7 +113,7 @@ def run_worker() -> None:
                                     reason=reason, dedupe_key=dedupe))
 
                 dest = best.destination
-                dates = best.depart_date + (f" → {best.return_date}" if best.return_date else "")
+                dates = _fmt_date(best.depart_date) + (f" → {_fmt_date(best.return_date)}" if best.return_date else "")
                 triggered.append({
                     "route": f"{best.origin} → {dest}",
                     "price": float(best.price), "currency": best.currency,

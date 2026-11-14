@@ -21,6 +21,12 @@ function esc(s) {
 
 function money(p, cur) { return Math.round(p) + " " + esc(cur || "EUR"); }
 
+// Data ISO (AAAA-MM-GG) -> gg-mm-aaaa per la UI. Lascia intatto il resto.
+function fmtDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? "" : s));
+  return m ? m[3] + "-" + m[2] + "-" + m[1] : (s == null ? "" : String(s));
+}
+
 // ----- DASHBOARD (ricerca) ------------------------------------------------
 function initDashboard() {
   const form = document.getElementById("searchForm");
@@ -35,13 +41,23 @@ function initDashboard() {
   const applyMode = () => {
     const m = mode.value;
     show("destination", m !== "explore");
+    show("swap", m !== "explore");
     show("departDate", m === "search");
     show("returnDate", m === "search");
+    show("flex", m === "search");
     show("adults", m === "search");
     show("maxPrice", m === "explore");
   };
   mode.addEventListener("change", applyMode);
   applyMode();
+
+  // Inverte i codici di partenza e arrivo.
+  const swapBtn = document.getElementById("swapBtn");
+  if (swapBtn) swapBtn.addEventListener("click", () => {
+    const o = document.getElementById("origin");
+    const d = document.getElementById("destination");
+    const tmp = o.value; o.value = d.value; d.value = tmp;
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -53,16 +69,22 @@ function initDashboard() {
     try {
       let html = "";
       if (m === "search") {
+        // Flessibilità date -> finestra (giorni) + mesi scanditi dal catalogo.
+        const FLEX = { "1": [1, 1], "3": [3, 1], "7": [7, 1],
+                       "14": [14, 1], "31": [16, 1], "90": [46, 3] };
+        const fv = document.getElementById("flex").value;
+        const [flexDays, months] = FLEX[fv] || [14, 1];
         const q = new URLSearchParams({ origin, destination: dest,
           departDate: document.getElementById("departDate").value,
-          adults: document.getElementById("adults").value });
+          adults: document.getElementById("adults").value,
+          flexDays: flexDays, months: months });
         const rd = document.getElementById("returnDate").value;
         if (rd) q.set("returnDate", rd);
         const data = await api("GET", "/api/search?" + q.toString());
         html = (data.offers || []).map(offerCard).join("");
         const n = (data.offers || []).length;
         status.textContent = n + (n === 1 ? " risultato" : " risultati")
-          + " · prezzo più basso per data (vicine a quella scelta) · fonti: "
+          + " · più basso per data nella finestra scelta · fonti: "
           + (data.providers || []).join(", ");
       } else if (m === "explore") {
         const q = new URLSearchParams({ origin });
@@ -99,9 +121,9 @@ function offerCard(o) {
   return '<div class="col-12 col-md-6 col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">'
     + '<h5 class="card-title">' + esc(o.origin) + " → " + esc(o.destination) + "</h5>"
     + '<div class="price">' + money(o.price, o.currency) + "</div>"
-    + '<div class="small text-muted mb-2">' + esc(o.depart_date)
+    + '<div class="small text-muted mb-2">' + esc(fmtDate(o.depart_date))
     + (o.depart_time ? " · " + esc(o.depart_time) : "")
-    + (o.return_date ? " → " + esc(o.return_date) : "")
+    + (o.return_date ? " → " + esc(fmtDate(o.return_date)) : "")
     + (o.stops != null ? " · " + o.stops + " scali" : "") + "</div>"
     + sourceBadge(o.source) + "</div></div></div>";
 }
@@ -110,14 +132,14 @@ function destCard(d) {
   return '<div class="col-12 col-md-6 col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">'
     + '<h5 class="card-title">' + esc(d.origin) + " → " + esc(d.destination) + "</h5>"
     + '<div class="price">da ' + money(d.price, d.currency) + "</div>"
-    + '<div class="small text-muted mb-2">' + esc(d.depart_date || "")
-    + (d.return_date ? " → " + esc(d.return_date) : "") + (d.indicative ? " · prezzo indicativo" : "") + "</div>"
+    + '<div class="small text-muted mb-2">' + esc(fmtDate(d.depart_date))
+    + (d.return_date ? " → " + esc(fmtDate(d.return_date)) : "") + (d.indicative ? " · prezzo indicativo" : "") + "</div>"
     + sourceBadge(d.source) + "</div></div></div>";
 }
 
 function dateCard(d) {
   return '<div class="col-6 col-md-4 col-lg-3"><div class="card shadow-sm h-100"><div class="card-body">'
-    + '<div class="fw-bold">' + esc(d.depart_date) + "</div>"
+    + '<div class="fw-bold">' + esc(fmtDate(d.depart_date)) + "</div>"
     + '<div class="price">' + money(d.price, d.currency) + "</div>"
     + sourceBadge(d.source) + "</div></div></div>";
 }
@@ -209,19 +231,22 @@ function alertCard(a) {
   const badge = paused
     ? '<span class="badge text-bg-secondary">Sospeso</span>'
     : '<span class="badge text-bg-success">Attivo</span>';
-  const price = a.last_price != null
-    ? '<div class="price">' + money(a.last_price, a.currency) + "</div>"
-    : '<div class="text-muted small">prezzo non ancora rilevato</div>';
   const toggle = paused
     ? '<button class="btn btn-sm btn-outline-success" data-action="resume" data-id="' + a.id + '">Riprendi</button>'
     : '<button class="btn btn-sm btn-outline-secondary" data-action="suspend" data-id="' + a.id + '">Sospendi</button>';
-  const target = a.target_price != null ? " · soglia " + money(a.target_price, a.currency) : "";
+  const target = a.target_price != null ? "soglia " + money(a.target_price, a.currency) : "";
   const DOW = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
   const dowTxt = (csv) => (csv || "").split(",").filter(Boolean).map((n) => DOW[+n] || n).join("/");
   const TRIP = { round_trip: "A/R", one_way: "solo andata", same_day: "in giornata" };
-  const bits = [];
-  if (a.trip_type && a.trip_type !== "round_trip") bits.push(TRIP[a.trip_type] || a.trip_type);
-  if (a.horizon_months) bits.push("prossimi " + a.horizon_months + " mesi");
+  const STRAT = { threshold: "sotto soglia", drop: "calo di prezzo", deal: "buon affare" };
+  const dest = a.destination === "ANY" ? "Ovunque 🌍" : a.destination;
+
+  // Che cosa cerca questo alert (la definizione, non un giorno specifico).
+  let when;
+  if (a.horizon_months) when = "prossimi " + a.horizon_months + " mesi";
+  else if (a.depart_to && a.depart_to !== a.depart_from) when = fmtDate(a.depart_from) + " – " + fmtDate(a.depart_to);
+  else when = fmtDate(a.depart_from);
+  const bits = [when, TRIP[a.trip_type] || a.trip_type];
   const dd = dowTxt(a.depart_dows); if (dd) bits.push("part. " + dd);
   const rd = dowTxt(a.return_dows); if (rd) bits.push("rit. " + rd);
   if (a.depart_time_from || a.depart_time_to)
@@ -229,16 +254,31 @@ function alertCard(a) {
   if (a.return_time_from || a.return_time_to)
     bits.push("rit. " + (a.return_time_from || "…") + "–" + (a.return_time_to || "…"));
   if (a.max_stops != null) bits.push(a.max_stops + " scali max");
-  const extra = bits.length ? '<div class="small text-muted mb-1">' + esc(bits.join(" · ")) + "</div>" : "";
+  bits.push(STRAT[a.strategy] || a.strategy);
+  if (target) bits.push(target);
+  const def = '<div class="small text-muted mb-2">' + esc(bits.join(" · ")) + "</div>";
+
+  // La MIGLIOR offerta trovata: destinazione e giorno reali.
+  let found;
+  const o = a.last_offer;
+  if (o && o.price != null) {
+    const dep = fmtDate(o.depart_date) + (o.depart_time ? " " + o.depart_time : "");
+    const ret = o.return_date ? " → " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time : "") : "";
+    found = '<div class="mb-1"><span class="badge text-bg-light border me-1">' + esc(o.destination || a.destination) + "</span>"
+      + '<span class="text-muted small">' + esc(dep + ret) + "</span></div>"
+      + '<div class="price">' + money(o.price, o.currency || a.currency) + "</div>";
+  } else if (a.last_price != null) {
+    found = '<div class="price">' + money(a.last_price, a.currency) + "</div>";
+  } else {
+    found = '<div class="text-muted small">nessuna offerta ancora rilevata</div>';
+  }
+
   return '<div class="col-12 col-md-6"><div class="card shadow-sm h-100 alert-card ' + (paused ? "status-paused" : "") + '">'
     + '<div class="card-body">'
     + '<div class="d-flex justify-content-between align-items-start">'
-    + '<h5 class="card-title mb-1">' + esc(a.origin) + " → " + esc(a.destination) + "</h5>" + badge + "</div>"
-    + '<div class="small text-muted mb-1">' + esc(a.depart_from)
-    + (a.return_from ? " · ritorno " + esc(a.return_from) : "")
-    + " · " + esc(a.strategy) + target + "</div>"
-    + extra
-    + price
+    + '<h5 class="card-title mb-1">' + esc(a.origin) + " → " + esc(dest) + "</h5>" + badge + "</div>"
+    + def
+    + found
     + '<div class="d-flex gap-2 mt-3">' + toggle
     + '<button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="' + a.id + '">Elimina</button>'
     + "</div></div></div></div>";

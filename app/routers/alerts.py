@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Alert, User
+from ..models import Alert, PriceHistory, User
 from ..providers.run_cache import RunCache
 from ..schemas import AlertCreate
 from ..services.search import SearchService
@@ -14,7 +14,25 @@ from ..services.search import SearchService
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
-def _serialize(a: Alert) -> dict:
+def _latest_offer(db: Session, alert_id: str) -> dict | None:
+    """Ultima offerta rilevata (dallo storico prezzi): destinazione e date reali."""
+    row = (db.query(PriceHistory)
+           .filter(PriceHistory.alert_id == alert_id)
+           .order_by(PriceHistory.observed_at.desc()).first())
+    if not row or not row.offer_json:
+        return None
+    o = row.offer_json
+    return {
+        "destination": o.get("destination"),
+        "depart_date": o.get("depart_date"), "return_date": o.get("return_date"),
+        "depart_time": o.get("depart_time"), "return_time": o.get("return_time"),
+        "price": float(o.get("price")) if o.get("price") is not None else None,
+        "currency": o.get("currency"),
+        "source": (o.get("source") or {}).get("provider"),
+    }
+
+
+def _serialize(a: Alert, last_offer: dict | None = None) -> dict:
     return {
         "id": a.id, "origin": a.origin, "destination": a.destination,
         "depart_from": a.depart_from.isoformat(),
@@ -30,6 +48,7 @@ def _serialize(a: Alert) -> dict:
         "currency": a.currency, "strategy": a.strategy, "status": a.status,
         "last_price": float(a.last_price) if a.last_price is not None else None,
         "last_checked": a.last_checked.isoformat() if a.last_checked else None,
+        "last_offer": last_offer,
     }
 
 
@@ -43,7 +62,7 @@ def _get_owned(alert_id: str, user: User, db: Session) -> Alert:
 @router.get("")
 def list_alerts(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(Alert).filter(Alert.user_id == user.id).order_by(Alert.created_at.desc()).all()
-    return {"alerts": [_serialize(a) for a in rows]}
+    return {"alerts": [_serialize(a, _latest_offer(db, a.id)) for a in rows]}
 
 
 @router.post("")
@@ -72,20 +91,24 @@ def create_alert(body: AlertCreate, user: User = Depends(get_current_user),
     db.commit()
     db.refresh(a)
 
-    # Primo check immediato (best effort), per mostrare subito un prezzo
+    # Primo check immediato (best effort), per mostrare subito prezzo e meta trovata
+    last_offer = None
     if settings.FIRST_CHECK_ON_CREATE:
         try:
             best = SearchService(RunCache()).best_offer_for_alert(a)
             if best:
-                a.last_price = best.price
                 from datetime import datetime
+                a.last_price = best.price
                 a.last_checked = datetime.utcnow()
+                db.add(PriceHistory(alert_id=a.id, price=best.price,
+                                    currency=best.currency, offer_json=best.model_dump()))
                 db.commit()
                 db.refresh(a)
+                last_offer = _latest_offer(db, a.id)
         except Exception:  # noqa: BLE001
             pass
 
-    return _serialize(a)
+    return _serialize(a, last_offer)
 
 
 @router.post("/{alert_id}/suspend")

@@ -67,7 +67,10 @@ class AmadeusClient(FlightProvider):
 
     # -- API --------------------------------------------------------------
     def search_offers(self, origin, destination, depart_date, return_date=None,
-                      adults=1, currency="EUR", exact_date=False) -> list[FlightOffer]:
+                      adults=1, currency="EUR", exact_date=False,
+                      months=None, max_offset_days=None) -> list[FlightOffer]:
+        # months/max_offset_days (finestra date della dashboard) sono accettati per
+        # compatibilità con l'interfaccia comune: Amadeus interroga la data esatta.
         headers = self._headers()
         if not headers:
             return []

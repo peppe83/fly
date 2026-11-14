@@ -16,10 +16,14 @@ def _service() -> SearchService:
 @router.get("/search")
 def search(origin: str, destination: str, departDate: str,
            returnDate: str | None = None, adults: int = 1,
-           currency: str = "EUR", _user=Depends(get_current_user)):
+           currency: str = "EUR", flexDays: int | None = None,
+           months: int | None = None, _user=Depends(get_current_user)):
+    # flexDays/months = date flessibili: finestra di giorni attorno alla data e
+    # numero di mesi scanditi dal catalogo. None = comportamento predefinito.
     svc = _service()
     offers = svc.search_offers(origin.upper(), destination.upper(), departDate,
-                               returnDate, adults, currency.upper(), include_live=True)
+                               returnDate, adults, currency.upper(), include_live=True,
+                               months=months, max_offset_days=flexDays)
     return {"query": {"origin": origin, "destination": destination, "date": departDate},
             "offers": [o.model_dump() for o in offers],
             "providers": svc.last_providers, "fresh": True}

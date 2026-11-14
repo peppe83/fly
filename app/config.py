@@ -49,6 +49,20 @@ class Settings(BaseSettings):
     # "Ovunque" ibrido: Travelpayouts scopre le mete, SerpApi riprezza le prime N
     # con prezzi reali. 0 = disattiva la riprezzatura live (solo prezzi indicativi).
     EXPLORE_LIVE_TOP_N: int = 5
+    # Numero massimo di mete restituite da "Ovunque" (catalogo Travelpayouts).
+    EXPLORE_MAX_DESTINATIONS: int = 100
+
+    # Kiwi.com (Tequila API) — seconda fonte LIVE con ottima copertura low-cost.
+    # Supporta ricerca per RANGE di date e "ovunque" in una sola chiamata.
+    # Gli alert NON la usano (resta tra le fonti live, mai nel catalogo).
+    KIWI_API_KEY: str = ""
+    KIWI_BASE_URL: str = "https://api.tequila.kiwi.com"
+    KIWI_TIMEOUT_SECONDS: int = 20
+    KIWI_SEARCH_LIMIT: int = 60
+
+    # Ricerca su catalogo (Travelpayouts) per la DASHBOARD: più larga = più risultati.
+    CATALOG_SEARCH_LIMIT: int = 200   # righe per chiamata (max API: 1000)
+    CATALOG_SEARCH_MONTHS: int = 2    # mesi scansionati a partire dalla data scelta
 
     # Email (Gmail)
     GMAIL_USER: str = ""
@@ -73,7 +87,7 @@ class Settings(BaseSettings):
     # Tetti di piano
     MAX_USERS: int = 50
     MAX_ALERTS_PER_USER: int = 5
-    MAX_DATE_OFFSET_DAYS: int = 7
+    MAX_DATE_OFFSET_DAYS: int = 14   # finestra ± giorni attorno alla data scelta (dashboard)
 
     # Feature flag
     ENABLE_ALERTS: bool = True

@@ -73,7 +73,19 @@ class FlightProvider(ABC):
 
     def search_offers(self, origin: str, destination: str, depart_date: str,
                       return_date: str | None = None, adults: int = 1,
-                      currency: str = "EUR", exact_date: bool = False) -> list[FlightOffer]:
+                      currency: str = "EUR", exact_date: bool = False,
+                      months: int | None = None,
+                      max_offset_days: int | None = None) -> list[FlightOffer]:
+        """`months`/`max_offset_days`: ampiezza della finestra date per la dashboard
+        (quante mensilità scandire e di quanti giorni allargarsi attorno alla data).
+        I provider che interrogano solo la data esatta li ignorano."""
+        return []
+
+    def explore_anywhere(self, origin: str, max_price: float | None = None,
+                         currency: str = "EUR", date_from: str | None = None,
+                         date_to: str | None = None) -> list[DestinationDeal]:
+        """Mete più economiche dall'origine con PREZZI REALI (fonti live che
+        supportano "ovunque", es. Kiwi). Default: nessun risultato."""
         return []
 
     def offers_from_origin(self, origin: str, depart_date: str,

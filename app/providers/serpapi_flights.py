@@ -22,12 +22,55 @@ log = logging.getLogger("flynotify.serpapi")
 # i principali codici città/metropolitani sui loro aeroporti: SerpApi accetta più
 # aeroporti separati da virgola in UNA sola chiamata (nessun costo quota extra).
 CITY_TO_AIRPORTS: dict[str, str] = {
+    # --- Italia ---
     "MIL": "MXP,LIN,BGY",
     "ROM": "FCO,CIA",
+    "VCE": "VCE,TSF",            # Venezia + Treviso
+    "NAP": "NAP",
+    "PMO": "PMO",
+    "CTA": "CTA",
+    "BLQ": "BLQ",
+    "BRI": "BRI",
+    "CAG": "CAG",
+    "PSA": "PSA",
+    "FLR": "FLR,PSA",            # Firenze (anche Pisa)
+    "TRN": "TRN",
+    "VRN": "VRN",
+    "BGY": "BGY",
+    "TRS": "TRS",
+    "GOA": "GOA",
+    "BDS": "BDS",
+    "SUF": "SUF",
+    "AHO": "AHO",
+    "OLB": "OLB",
+    # --- Europa (città multi-scalo) ---
     "LON": "LHR,LGW,STN,LTN,LCY",
     "PAR": "CDG,ORY,BVA",
     "BER": "BER",
+    "MAD": "MAD",
+    "BCN": "BCN",
     "MOW": "SVO,DME,VKO",
+    "STO": "ARN,BMA,NYO",
+    "OSL": "OSL,TRF",
+    "BRU": "BRU,CRL",            # Bruxelles + Charleroi
+    "FRA": "FRA,HHN",
+    "HAM": "HAM",
+    "DUS": "DUS,NRN,CGN",
+    "MUC": "MUC",
+    "VIE": "VIE",
+    "ZRH": "ZRH",
+    "GVA": "GVA",
+    "AMS": "AMS,EIN",
+    "CPH": "CPH",
+    "DUB": "DUB",
+    "LIS": "LIS",
+    "OPO": "OPO",
+    "ATH": "ATH",
+    "IST": "IST,SAW",            # Istanbul + Sabiha
+    "WAW": "WAW,WMI",
+    "PRG": "PRG",
+    "BUD": "BUD",
+    # --- Resto del mondo ---
     "NYC": "JFK,EWR,LGA",
     "WAS": "IAD,DCA,BWI",
     "CHI": "ORD,MDW",
@@ -41,8 +84,6 @@ CITY_TO_AIRPORTS: dict[str, str] = {
     "SAO": "GRU,CGH,VCP",
     "RIO": "GIG,SDU",
     "BUE": "EZE,AEP",
-    "STO": "ARN,BMA,NYO",
-    "OSL": "OSL,TRF",
 }
 
 
@@ -59,9 +100,11 @@ class SerpApiFlightsClient(FlightProvider):
         return bool(settings.SERPAPI_KEY)
 
     def search_offers(self, origin, destination, depart_date, return_date=None,
-                      adults=1, currency="EUR", exact_date=False) -> list[FlightOffer]:
-        # SerpApi interroga sempre la data esatta: exact_date è accettato per
-        # compatibilità con l'interfaccia comune, ma ininfluente qui.
+                      adults=1, currency="EUR", exact_date=False,
+                      months=None, max_offset_days=None) -> list[FlightOffer]:
+        # SerpApi interroga sempre la data esatta: exact_date e i parametri di
+        # finestra (months/max_offset_days) sono accettati per compatibilità con
+        # l'interfaccia comune, ma ininfluenti qui.
         if not self.enabled:
             return []
         params = {
