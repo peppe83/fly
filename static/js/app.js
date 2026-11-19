@@ -76,34 +76,136 @@ function initDashboard() {
   };
   const stopBucket = (s) => (s == null ? null : (s >= 2 ? "2" : String(s)));
 
+  // Intervallo orario manuale (slider a due maniglie), in minuti.
+  const SL_MIN = 0, SL_MAX = 1410, SL_STEP = 30, SL_GAP = 30;   // 00:00–23:30
+  const toHHMM = (min) => String(Math.floor(min / 60)).padStart(2, "0")
+    + ":" + String(min % 60).padStart(2, "0");
+  const toMin = (hhmm) => parseInt(hhmm.slice(0, 2), 10) * 60 + parseInt(hhmm.slice(3, 5), 10);
+  const sliderActive = () => {
+    const f = document.getElementById("fFrom"), t = document.getElementById("fTo");
+    return f && t && (+f.value > SL_MIN || +t.value < SL_MAX);
+  };
+
   function buildFilters(offers) {
-    // Compagnie presenti nei risultati (ordinate).
+    document.getElementById("resultsCol").className = "col-12 col-lg-9";
+
+    // Compagnie lette DINAMICAMENTE dai risultati (ordinate), checkbox verticali.
     const carriers = [...new Set(offers.flatMap(o => o.carriers || []))].sort();
-    const carBoxes = carriers.length
-      ? carriers.map(c => '<label class="me-2"><input type="checkbox" class="f-car" value="'
-          + esc(c) + '" checked> ' + esc(c) + "</label>").join("")
+    const check = (id, value, label, cls) =>
+      '<div class="form-check"><input class="form-check-input ' + cls + '" type="checkbox" id="'
+      + id + '" value="' + esc(value) + '" checked>'
+      + '<label class="form-check-label" for="' + id + '">' + label + "</label></div>";
+    const carList = carriers.length
+      ? carriers.map((c, i) => check("car_" + i, c, esc(c), "f-car")).join("")
       : '<span class="text-muted small">nessuna compagnia indicata</span>';
+
+    const sec = (title, extra, body) =>
+      '<div class="f-section">'
+      + '<div class="d-flex align-items-center justify-content-between mb-2">'
+      + '<span class="f-title text-uppercase text-muted fw-semibold">' + title + "</span>"
+      + (extra || "") + "</div>" + body + "</div>";
+
     filtersEl.innerHTML =
-        '<div class="row g-3 align-items-end">'
-      + '<div class="col-12 col-md-auto"><div class="form-label small mb-1">Scali</div>'
-      + '<label class="me-2"><input type="checkbox" class="f-stop" value="0" checked> diretto</label>'
-      + '<label class="me-2"><input type="checkbox" class="f-stop" value="1" checked> 1 scalo</label>'
-      + '<label class="me-2"><input type="checkbox" class="f-stop" value="2" checked> 2+ scali</label></div>'
-      + '<div class="col-12 col-md-auto"><label class="form-label small mb-1" for="fBand">Orario partenza</label>'
-      + '<select id="fBand" class="form-select form-select-sm">'
-      + '<option value="any">Qualsiasi</option><option value="morning">Mattina (05–12)</option>'
-      + '<option value="afternoon">Pomeriggio (12–18)</option><option value="evening">Sera (18–24)</option>'
-      + '<option value="night">Notte (00–05)</option></select></div>'
-      + '<div class="col-12 col-md-auto"><label class="form-label small mb-1" for="fSort">Ordina per</label>'
-      + '<select id="fSort" class="form-select form-select-sm">'
-      + '<option value="price">Prezzo</option><option value="depart">Orario partenza</option>'
-      + '<option value="arrive">Orario arrivo</option></select></div>'
-      + '<div class="col-12"><div class="form-label small mb-1">Compagnie</div>'
-      + '<div class="d-flex flex-wrap gap-1">' + carBoxes + "</div></div>"
-      + "</div>";
-    filtersEl.querySelectorAll("input, select").forEach(el =>
+        '<div class="filters-card card card-body shadow-sm">'
+      + '<div class="d-flex align-items-center justify-content-between">'
+      + '<button type="button" class="btn btn-sm btn-light fw-semibold d-inline-flex align-items-center gap-1 flex-grow-1 text-start" id="fToggle" aria-expanded="true">'
+      + '<span class="flex-grow-1">⚙︎ Filtri e ordinamento</span>'
+      + '<span class="badge rounded-pill text-bg-primary d-none" id="fCount"></span>'
+      + '<span id="fChevron">▾</span></button></div>'
+      + '<div id="fBody" class="pt-3">'
+
+      + sec("Ordina per", "",
+            '<select id="fSort" class="form-select form-select-sm">'
+          + '<option value="price">Prezzo</option>'
+          + '<option value="depart">Orario partenza</option>'
+          + '<option value="arrive">Orario arrivo</option></select>')
+
+      + sec("Scali", "",
+            check("st0", "0", "Diretto", "f-stop")
+          + check("st1", "1", "1 scalo", "f-stop")
+          + check("st2", "2", "2+ scali", "f-stop"))
+
+      + sec("Orario partenza", "",
+            '<select id="fBand" class="form-select form-select-sm mb-3">'
+          + '<option value="any">Qualsiasi orario</option>'
+          + '<option value="morning">Mattina (05–12)</option>'
+          + '<option value="afternoon">Pomeriggio (12–18)</option>'
+          + '<option value="evening">Sera (18–24)</option>'
+          + '<option value="night">Notte (00–05)</option></select>'
+          + '<div class="small text-muted mb-1">oppure intervallo manuale</div>'
+          + '<div class="dual-range mb-1"><div class="track"></div><div class="range" id="fRangeFill"></div>'
+          + '<input type="range" id="fFrom" min="' + SL_MIN + '" max="' + SL_MAX + '" step="' + SL_STEP + '" value="' + SL_MIN + '" aria-label="dalle">'
+          + '<input type="range" id="fTo" min="' + SL_MIN + '" max="' + SL_MAX + '" step="' + SL_STEP + '" value="' + SL_MAX + '" aria-label="alle"></div>'
+          + '<div class="d-flex justify-content-between small">'
+          + '<span>dalle <strong id="fFromLbl">00:00</strong></span>'
+          + '<span>alle <strong id="fToLbl">23:30</strong></span></div>')
+
+      + sec("Compagnie", '<span class="small">'
+            + '<button type="button" class="btn btn-sm btn-link p-0 text-decoration-none me-2" id="carAll">Tutte</button>'
+            + '<button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" id="carNone">Nessuna</button></span>',
+            '<div class="f-cars d-flex flex-column gap-1">' + carList + "</div>")
+
+      + '<button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-3" id="fReset">Azzera filtri</button>'
+      + "</div></div>";
+
+    // Listener: ogni cambio riapplica i filtri.
+    filtersEl.querySelectorAll(".f-stop, .f-car, #fBand, #fSort").forEach(el =>
       el.addEventListener("change", applyFilters));
+    const fFrom = document.getElementById("fFrom"), fTo = document.getElementById("fTo");
+    [fFrom, fTo].forEach(el => el.addEventListener("input", () => { onSlide(el); }));
+    document.getElementById("fBand").addEventListener("change", resetSlider);
+    document.getElementById("carAll").addEventListener("click", () => setCars(true));
+    document.getElementById("carNone").addEventListener("click", () => setCars(false));
+    document.getElementById("fReset").addEventListener("click", resetFilters);
+    const toggle = document.getElementById("fToggle");
+    toggle.addEventListener("click", () => {
+      const open = document.getElementById("fBody").classList.toggle("d-none");
+      toggle.setAttribute("aria-expanded", open ? "false" : "true");
+      document.getElementById("fChevron").textContent = open ? "▸" : "▾";
+    });
+    // Mobile: pannello chiuso di default (su desktop la sidebar resta aperta).
+    if (window.matchMedia("(max-width: 991.98px)").matches) toggle.click();
+    paintSlider();
     filtersEl.hidden = false;
+  }
+
+  // --- slider a due maniglie -------------------------------------------
+  function onSlide(moved) {
+    const f = document.getElementById("fFrom"), t = document.getElementById("fTo");
+    if (+f.value > +t.value - SL_GAP) {           // niente sovrapposizione delle maniglie
+      if (moved === f) f.value = +t.value - SL_GAP;
+      else t.value = +f.value + SL_GAP;
+    }
+    document.getElementById("fBand").value = "any";  // il manuale annulla la fascia
+    paintSlider();
+    applyFilters();
+  }
+  function paintSlider() {
+    const f = document.getElementById("fFrom"), t = document.getElementById("fTo");
+    if (!f || !t) return;
+    const lo = (f.value - SL_MIN) / (SL_MAX - SL_MIN) * 100;
+    const hi = (t.value - SL_MIN) / (SL_MAX - SL_MIN) * 100;
+    const fill = document.getElementById("fRangeFill");
+    fill.style.left = lo + "%"; fill.style.width = (hi - lo) + "%";
+    document.getElementById("fFromLbl").textContent = toHHMM(+f.value);
+    document.getElementById("fToLbl").textContent = toHHMM(+t.value);
+    f.style.zIndex = (+f.value > SL_MAX - 120) ? 5 : 4;   // maniglia "dalle" afferrabile in alto
+  }
+  function resetSlider() {
+    const f = document.getElementById("fFrom"), t = document.getElementById("fTo");
+    if (f && t) { f.value = SL_MIN; t.value = SL_MAX; paintSlider(); }
+  }
+
+  const setCars = (on) => {
+    filtersEl.querySelectorAll(".f-car").forEach(c => { c.checked = on; });
+    applyFilters();
+  };
+  function resetFilters() {
+    filtersEl.querySelectorAll(".f-stop, .f-car").forEach(c => { c.checked = true; });
+    document.getElementById("fBand").value = "any";
+    document.getElementById("fSort").value = "price";
+    resetSlider();
+    applyFilters();
   }
 
   function applyFilters() {
@@ -112,11 +214,23 @@ function initDashboard() {
     const allCars = filtersEl.querySelectorAll(".f-car").length;
     const band = (document.getElementById("fBand") || {}).value || "any";
     const sort = (document.getElementById("fSort") || {}).value || "price";
+    const manual = sliderActive();
+    const lo = manual ? +document.getElementById("fFrom").value : 0;
+    const hi = manual ? +document.getElementById("fTo").value : 1440;
+
+    const timeOk = (hhmm) => {
+      if (manual) {                                   // intervallo manuale ha priorità
+        if (!hhmm) return false;
+        const m = toMin(hhmm);
+        return m >= lo && m <= hi;
+      }
+      return bandOf(hhmm, band);                       // altrimenti fascia
+    };
 
     let rows = lastOffers.filter(o => {
       const b = stopBucket(o.stops);
       if (b != null && !stops.includes(b)) return false;         // scali
-      if (!bandOf(o.depart_time, band)) return false;            // fascia oraria
+      if (!timeOk(o.depart_time)) return false;                  // orario partenza
       if (allCars && cars.length < allCars) {                    // compagnie
         const oc = o.carriers || [];
         if (oc.length && !oc.some(c => cars.includes(c))) return false;
@@ -130,6 +244,16 @@ function initDashboard() {
       const ka = key(a), kb = key(b);
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
+
+    // Conteggio filtri attivi (per il badge).
+    let active = 0;
+    if (stops.length < 3) active++;
+    if (allCars && cars.length < allCars) active++;
+    if (manual || band !== "any") active++;
+    if (sort !== "price") active++;
+    const badge = document.getElementById("fCount");
+    if (badge) { badge.textContent = active; badge.classList.toggle("d-none", active === 0); }
+
     results.innerHTML = rows.length
       ? rows.map(offerCard).join("")
       : '<p class="text-muted">Nessun volo con questi filtri.</p>';
@@ -145,12 +269,13 @@ function initDashboard() {
     const m = mode.value;
     results.innerHTML = "";
     if (filtersEl) filtersEl.hidden = true;
+    document.getElementById("resultsCol").className = "col-12";
     status.textContent = "Ricerca in corso…";
     try {
       let html = "";
       if (m === "search") {
         // Flessibilità date -> finestra (giorni) + mesi scanditi dal catalogo.
-        const FLEX = { "1": [1, 1], "3": [3, 1], "7": [7, 1],
+        const FLEX = { "1": [1, 1], "2": [2, 1], "3": [3, 1], "7": [7, 1],
                        "14": [14, 1], "31": [16, 1], "90": [46, 3] };
         const fv = document.getElementById("flex").value;
         const [flexDays, months] = FLEX[fv] || [14, 1];
