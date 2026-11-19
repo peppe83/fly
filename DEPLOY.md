@@ -223,3 +223,56 @@ Log utili:
 | Apache (HTTPS) | 443 | pubblico |
 | uvicorn (flynotify) | 8000 | solo 127.0.0.1 |
 | MySQL | 3306 | solo locale |
+
+---
+
+## 10. Auto-deploy con self-hosted runner (push → deploy)
+
+Obiettivo: a ogni `git push` su `main`, il VPS aggiorna il codice e riavvia il
+servizio **da solo**, tramite un **GitHub Actions self-hosted runner** che gira
+sul VPS ed esegue `scripts\deploy.ps1`.
+
+### 10.1 Prerequisiti sul VPS
+- Il progetto è un **clone git** del repo (`git clone https://github.com/peppe83/fly.git`)
+  nella cartella dell'app (es. `D:\webserver\apache24\flynotify`), con `.venv` e `.env` già configurati.
+- `git` e `nssm` raggiungibili nel PATH dell'utente che eseguirà il runner.
+- Il servizio NSSM `flynotify` già installato (sezione 4) e il worker (sezione 7).
+
+### 10.2 Installa il runner (una tantum)
+1. Su GitHub: **Settings → Actions → Runners → New self-hosted runner**, OS **Windows**.
+2. Segui i comandi mostrati (scarica ed estrai l'`actions-runner` in es. `D:\actions-runner`), poi configura:
+   ```powershell
+   cd D:\actions-runner
+   .\config.cmd --url https://github.com/peppe83/fly --token <TOKEN_MOSTRATO_DA_GITHUB> --labels fly-prod --unattended
+   ```
+   Le label risultanti devono includere `self-hosted, Windows, fly-prod` (combaciano con `deploy.yml`).
+3. Installa il runner **come servizio** (parte all'avvio del VPS):
+   ```powershell
+   .\svc.cmd install
+   .\svc.cmd start
+   ```
+   > Esegui il runner con un utente che abbia i permessi per `nssm restart flynotify`
+   > (nelle proprietà del servizio del runner, imposta "Log on as" un amministratore locale).
+
+### 10.3 Come funziona
+- Il workflow `.github/workflows/deploy.yml` scatta su **push a `main`** (salta i soli `.md`), oppure a mano da **Actions → Deploy produzione → Run workflow**.
+- Esegue `scripts\deploy.ps1`, che:
+  1. `git fetch` + `git reset --hard origin/main` (il VPS rispecchia esattamente il remoto; `.env` è gitignorato e resta intatto);
+  2. `pip install -r requirements.txt` **solo** se `requirements.txt` è cambiato;
+  3. `nssm restart flynotify` e verifica `http://127.0.0.1:8000/healthz`.
+- Il worker prende il nuovo codice al ciclo successivo (nessun riavvio necessario).
+
+### 10.4 Alternativa senza runner: attività pianificata
+Se preferisci non installare il runner, programma lo stesso script in pull ogni 10 minuti:
+```bat
+schtasks /Create /TN "fly-deploy" /SC MINUTE /MO 10 /RU SYSTEM /RL HIGHEST /F ^
+  /TR "powershell -ExecutionPolicy Bypass -File D:\webserver\apache24\flynotify\scripts\deploy.ps1"
+```
+Lo script è idempotente: se non ci sono novità sul remoto, non riavvia nulla di inutile
+(fa comunque il restart solo quando `HEAD` cambia o `requirements.txt` cambia).
+
+### 10.5 Deploy manuale
+In qualsiasi momento, sul VPS:
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\webserver\apache24\flynotify\scripts\deploy.ps1 -Force
+```

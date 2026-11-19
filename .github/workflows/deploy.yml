@@ -1,0 +1,28 @@
+name: Deploy produzione
+
+# Deploy automatico sul VPS Windows a ogni push su main.
+# Richiede un GitHub Actions **self-hosted runner** installato sul VPS con le
+# label [self-hosted, Windows, fly-prod] (vedi DEPLOY.md, sezione Auto-deploy).
+on:
+  push:
+    branches: [ main ]
+    # Evita deploy inutili per modifiche che non toccano l'app.
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.env.example'
+  workflow_dispatch: {}      # consente l'avvio manuale dalla tab Actions
+
+# Un solo deploy per volta; non annullare quello in corso.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Windows, fly-prod]
+    steps:
+      - name: Esegui deploy sul VPS
+        shell: powershell
+        run: |
+          & "D:\webserver\apache24\flynotify\scripts\deploy.ps1" -AppDir "D:\webserver\apache24\flynotify" -Branch "main"
