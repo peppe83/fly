@@ -23,7 +23,8 @@ class FlightOffer(BaseModel):
     duration: Optional[str] = None
     carriers: list[str] = []
     depart_time: Optional[str] = None   # orario partenza (HH:MM)
-    return_time: Optional[str] = None   # orario ritorno (HH:MM)
+    arrival_time: Optional[str] = None  # orario arrivo a destinazione (HH:MM)
+    return_time: Optional[str] = None   # orario partenza del ritorno (HH:MM)
     source: Source
 
     @property

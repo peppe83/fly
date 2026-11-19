@@ -143,8 +143,10 @@ class SerpApiFlightsClient(FlightProvider):
                 dep = segs[0].get("departure_airport") or {}
                 arr = segs[-1].get("arrival_airport") or {}
                 dep_time = dep.get("time")            # es. "2026-12-15 08:35"
+                arr_time = arr.get("time")
                 dep_date = (dep_time or depart_date)[:10]
                 hhmm = dep_time[11:16] if (dep_time and len(dep_time) >= 16) else None
+                arr_hhmm = arr_time[11:16] if (arr_time and len(arr_time) >= 16) else None
                 carriers: list[str] = []
                 for s in segs:
                     a = s.get("airline")
@@ -155,6 +157,7 @@ class SerpApiFlightsClient(FlightProvider):
                     destination=arr.get("id", destination),
                     depart_date=dep_date,
                     depart_time=hhmm,
+                    arrival_time=arr_hhmm,
                     return_date=return_date,
                     price=price,
                     currency=currency.upper(),

@@ -163,6 +163,9 @@ class TravelpayoutsClient(FlightProvider):
         ret_full = d.get("return_at") or ""
         depart_time = dep_full[11:16] if len(dep_full) >= 16 else None
         return_time = ret_full[11:16] if len(ret_full) >= 16 else None
+        # L'arrivo non è fornito direttamente: lo stimiamo da partenza + durata
+        # tratta (duration_to, in minuti) quando disponibile.
+        arrival_time = self._add_minutes(dep_full, d.get("duration_to") or d.get("duration"))
         return FlightOffer(
             origin=d.get("origin", origin),
             destination=d.get("destination", destination),
@@ -172,9 +175,21 @@ class TravelpayoutsClient(FlightProvider):
             price=float(d.get("price", 0) or 0), currency=currency.upper(),
             stops=d.get("transfers"),
             carriers=[carrier] if carrier else [],
-            depart_time=depart_time, return_time=return_time,
+            depart_time=depart_time, arrival_time=arrival_time, return_time=return_time,
             source=Source(provider=self.name, carrier=carrier),
         )
+
+    @staticmethod
+    def _add_minutes(dep_full: str, minutes) -> str | None:
+        """'YYYY-MM-DDTHH:MM:...' + minuti -> 'HH:MM'; None se dati insufficienti."""
+        if not dep_full or len(dep_full) < 16 or not minutes:
+            return None
+        try:
+            from datetime import timedelta
+            base = datetime.strptime(dep_full[:16], "%Y-%m-%dT%H:%M")
+            return (base + timedelta(minutes=int(minutes))).strftime("%H:%M")
+        except (ValueError, TypeError):
+            return None
 
     def inspiration_search(self, origin, max_price=None, currency="EUR") -> list[DestinationDeal]:
         if not self.enabled:

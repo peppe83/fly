@@ -103,12 +103,16 @@ class AmadeusClient(FlightProvider):
         segs = first.get("segments", [])
         stops = max(len(segs) - 1, 0)
         carriers = sorted({s.get("carrierCode") for s in segs if s.get("carrierCode")})
+        dep_at = (segs[0].get("departure", {}).get("at") if segs else "") or ""
+        arr_at = (segs[-1].get("arrival", {}).get("at") if segs else "") or ""
         return FlightOffer(
             origin=origin, destination=destination,
             depart_date=depart_date, return_date=return_date,
             price=price, currency=currency,
             stops=stops, duration=first.get("duration"),
             carriers=carriers,
+            depart_time=dep_at[11:16] if len(dep_at) >= 16 else None,
+            arrival_time=arr_at[11:16] if len(arr_at) >= 16 else None,
             source=Source(provider=self.name, carrier=carriers[0] if carriers else None),
         )
 

@@ -136,6 +136,8 @@ class KiwiClient(FlightProvider):
         inbound = [s for s in route if s.get("return")]
         dep_iso = (outbound[0].get("local_departure") if outbound
                    else d.get("local_departure")) or ""
+        arr_iso = (outbound[-1].get("local_arrival") if outbound
+                   else d.get("local_arrival")) or ""
         ret_iso = inbound[0].get("local_departure") if inbound else None
         carriers = d.get("airlines") or []
         return FlightOffer(
@@ -143,6 +145,7 @@ class KiwiClient(FlightProvider):
             destination=d.get("cityCodeTo") or d.get("flyTo") or destination,
             depart_date=(dep_iso or "")[:10],
             depart_time=dep_iso[11:16] if len(dep_iso) >= 16 else None,
+            arrival_time=arr_iso[11:16] if len(arr_iso) >= 16 else None,
             return_date=(ret_iso or "")[:10] if ret_iso else None,
             return_time=ret_iso[11:16] if (ret_iso and len(ret_iso) >= 16) else None,
             price=price, currency=currency.upper(),

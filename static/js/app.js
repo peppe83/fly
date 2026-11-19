@@ -59,12 +59,92 @@ function initDashboard() {
     const tmp = o.value; o.value = d.value; d.value = tmp;
   });
 
+  // ---- Filtri e ordinamento (solo modalità "Tratta singola") -------------
+  const filtersEl = document.getElementById("searchFilters");
+  let lastOffers = [];        // ultime offerte grezze dalla ricerca
+  let lastProviders = [];
+
+  // Fascia oraria di una partenza "HH:MM" -> chiave fascia.
+  const BANDS = { any: [0, 24], morning: [5, 12], afternoon: [12, 18],
+                  evening: [18, 24], night: [0, 5] };
+  const bandOf = (hhmm, key) => {
+    if (key === "any") return true;
+    if (!hhmm) return false;               // senza orario: escluso se filtri per fascia
+    const h = parseInt(hhmm.slice(0, 2), 10);
+    const [lo, hi] = BANDS[key] || [0, 24];
+    return h >= lo && h < hi;
+  };
+  const stopBucket = (s) => (s == null ? null : (s >= 2 ? "2" : String(s)));
+
+  function buildFilters(offers) {
+    // Compagnie presenti nei risultati (ordinate).
+    const carriers = [...new Set(offers.flatMap(o => o.carriers || []))].sort();
+    const carBoxes = carriers.length
+      ? carriers.map(c => '<label class="me-2"><input type="checkbox" class="f-car" value="'
+          + esc(c) + '" checked> ' + esc(c) + "</label>").join("")
+      : '<span class="text-muted small">nessuna compagnia indicata</span>';
+    filtersEl.innerHTML =
+        '<div class="row g-3 align-items-end">'
+      + '<div class="col-12 col-md-auto"><div class="form-label small mb-1">Scali</div>'
+      + '<label class="me-2"><input type="checkbox" class="f-stop" value="0" checked> diretto</label>'
+      + '<label class="me-2"><input type="checkbox" class="f-stop" value="1" checked> 1 scalo</label>'
+      + '<label class="me-2"><input type="checkbox" class="f-stop" value="2" checked> 2+ scali</label></div>'
+      + '<div class="col-12 col-md-auto"><label class="form-label small mb-1" for="fBand">Orario partenza</label>'
+      + '<select id="fBand" class="form-select form-select-sm">'
+      + '<option value="any">Qualsiasi</option><option value="morning">Mattina (05–12)</option>'
+      + '<option value="afternoon">Pomeriggio (12–18)</option><option value="evening">Sera (18–24)</option>'
+      + '<option value="night">Notte (00–05)</option></select></div>'
+      + '<div class="col-12 col-md-auto"><label class="form-label small mb-1" for="fSort">Ordina per</label>'
+      + '<select id="fSort" class="form-select form-select-sm">'
+      + '<option value="price">Prezzo</option><option value="depart">Orario partenza</option>'
+      + '<option value="arrive">Orario arrivo</option></select></div>'
+      + '<div class="col-12"><div class="form-label small mb-1">Compagnie</div>'
+      + '<div class="d-flex flex-wrap gap-1">' + carBoxes + "</div></div>"
+      + "</div>";
+    filtersEl.querySelectorAll("input, select").forEach(el =>
+      el.addEventListener("change", applyFilters));
+    filtersEl.hidden = false;
+  }
+
+  function applyFilters() {
+    const stops = [...filtersEl.querySelectorAll(".f-stop:checked")].map(c => c.value);
+    const cars = [...filtersEl.querySelectorAll(".f-car:checked")].map(c => c.value);
+    const allCars = filtersEl.querySelectorAll(".f-car").length;
+    const band = (document.getElementById("fBand") || {}).value || "any";
+    const sort = (document.getElementById("fSort") || {}).value || "price";
+
+    let rows = lastOffers.filter(o => {
+      const b = stopBucket(o.stops);
+      if (b != null && !stops.includes(b)) return false;         // scali
+      if (!bandOf(o.depart_time, band)) return false;            // fascia oraria
+      if (allCars && cars.length < allCars) {                    // compagnie
+        const oc = o.carriers || [];
+        if (oc.length && !oc.some(c => cars.includes(c))) return false;
+      }
+      return true;
+    });
+    const key = { price: o => o.price,
+                  depart: o => o.depart_time || "99:99",
+                  arrive: o => o.arrival_time || "99:99" }[sort];
+    rows = rows.slice().sort((a, b) => {
+      const ka = key(a), kb = key(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    results.innerHTML = rows.length
+      ? rows.map(offerCard).join("")
+      : '<p class="text-muted">Nessun volo con questi filtri.</p>';
+    status.textContent = rows.length + " di " + lastOffers.length
+      + (lastOffers.length === 1 ? " risultato" : " risultati")
+      + " · fonti: " + lastProviders.join(", ");
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const origin = document.getElementById("origin").value.trim().toUpperCase();
     const dest = document.getElementById("destination").value.trim().toUpperCase();
     const m = mode.value;
     results.innerHTML = "";
+    if (filtersEl) filtersEl.hidden = true;
     status.textContent = "Ricerca in corso…";
     try {
       let html = "";
@@ -81,11 +161,14 @@ function initDashboard() {
         const rd = document.getElementById("returnDate").value;
         if (rd) q.set("returnDate", rd);
         const data = await api("GET", "/api/search?" + q.toString());
-        html = (data.offers || []).map(offerCard).join("");
-        const n = (data.offers || []).length;
-        status.textContent = n + (n === 1 ? " risultato" : " risultati")
-          + " · più basso per data nella finestra scelta · fonti: "
-          + (data.providers || []).join(", ");
+        lastOffers = data.offers || [];
+        lastProviders = data.providers || [];
+        if (lastOffers.length) {
+          buildFilters(lastOffers);
+          applyFilters();
+          return;
+        }
+        status.textContent = "0 risultati · fonti: " + lastProviders.join(", ");
       } else if (m === "explore") {
         const q = new URLSearchParams({ origin });
         const mp = document.getElementById("maxPrice").value;
@@ -117,14 +200,24 @@ function sourceBadge(src) {
   return '<span class="badge text-bg-light badge-source">Fonte: ' + prov + car + "</span>";
 }
 
+function stopsLabel(s) {
+  if (s == null) return "";
+  if (s === 0) return "diretto";
+  return s + (s === 1 ? " scalo" : " scali");
+}
+
 function offerCard(o) {
+  const times = (o.depart_time || "") + (o.depart_time && o.arrival_time ? " → " : "")
+    + (o.arrival_time || "");
+  const car = (o.carriers && o.carriers.length) ? o.carriers.map(esc).join(", ") : "";
+  const meta = [o.stops != null ? stopsLabel(o.stops) : "", car].filter(Boolean).join(" · ");
   return '<div class="col-12 col-md-6 col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">'
     + '<h5 class="card-title">' + esc(o.origin) + " → " + esc(o.destination) + "</h5>"
     + '<div class="price">' + money(o.price, o.currency) + "</div>"
-    + '<div class="small text-muted mb-2">' + esc(fmtDate(o.depart_date))
-    + (o.depart_time ? " · " + esc(o.depart_time) : "")
-    + (o.return_date ? " → " + esc(fmtDate(o.return_date)) : "")
-    + (o.stops != null ? " · " + o.stops + " scali" : "") + "</div>"
+    + '<div class="small text-muted">' + esc(fmtDate(o.depart_date))
+    + (o.return_date ? " → " + esc(fmtDate(o.return_date)) : "") + "</div>"
+    + (times ? '<div class="small">🕐 ' + esc(times) + "</div>" : "")
+    + (meta ? '<div class="small text-muted mb-2">' + meta + "</div>" : '<div class="mb-2"></div>')
     + sourceBadge(o.source) + "</div></div></div>";
 }
 
