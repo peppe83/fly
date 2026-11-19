@@ -226,53 +226,82 @@ Log utili:
 
 ---
 
-## 10. Auto-deploy con self-hosted runner (push → deploy)
 
-Obiettivo: a ogni `git push` su `main`, il VPS aggiorna il codice e riavvia il
-servizio **da solo**, tramite un **GitHub Actions self-hosted runner** che gira
-sul VPS ed esegue `scripts\deploy.ps1`.
+## 10. Auto-deploy con self-hosted runner (stesso schema di "leggimi")
 
-### 10.1 Prerequisiti sul VPS
-- Il progetto è un **clone git** del repo (`git clone https://github.com/peppe83/fly.git`)
-  nella cartella dell'app (es. `D:\webserver\apache24\flynotify`), con `.venv` e `.env` già configurati.
-- `git` e `nssm` raggiungibili nel PATH dell'utente che eseguirà il runner.
-- Il servizio NSSM `flynotify` già installato (sezione 4) e il worker (sezione 7).
+A ogni `push` su `main`: i **test** girano sul cloud GitHub (`ubuntu-latest`), poi un
+**runner self-hosted** sulla VPS esegue `strumenti\aggiorna.ps1`, che **copia** il codice
+in produzione (robocopy, niente git lato server) e riavvia il servizio NSSM, preservando
+`.env`, `.venv\`, `logs\`, `backup\`.
 
-### 10.2 Installa il runner (una tantum)
-1. Su GitHub: **Settings → Actions → Runners → New self-hosted runner**, OS **Windows**.
-2. Segui i comandi mostrati (scarica ed estrai l'`actions-runner` in es. `D:\actions-runner`), poi configura:
+Convenzioni (gemelle di leggimi):
+
+| | leggimi | **fly** |
+|---|---|---|
+| Cartella produzione | `C:\webserver\python\leggimi` | `C:\webserver\python\fly` |
+| Servizio NSSM | `my-leggimi` | `my-fly` |
+| Porta uvicorn | 5010 | **5020** |
+| Label runner | `leggimi` | `fly` |
+| Health check | `/api/salute` | `/healthz` |
+
+### 10.1 Primo setup della produzione (una tantum)
+```powershell
+# 1. Cartella e codice iniziale (il runner poi aggiornerà da solo)
+mkdir C:\webserver\python\fly
+# copia qui una prima volta il contenuto del repo, oppure lascia che lo faccia il primo deploy
+#   (in quel caso crea almeno .env e .venv come sotto)
+
+# 2. .env di produzione (NON versionato) — parti da .env.example
+#    Imposta almeno:
+#      APP_ENV=production
+#      PORT=5020
+#      APP_BASE_URL=https://fly.tuodominio.it
+#      JWT_SECRET=<stringa lunga e casuale>
+#      DATABASE_URL=mysql+pymysql://fly:PASSWORD@127.0.0.1:3306/fly?charset=utf8mb4
+#      (chiavi provider + Gmail)
+
+# 3. Virtualenv + dipendenze (Python 3.15 installato "per tutti gli utenti")
+cd C:\webserver\python\fly
+py -3.15 -m venv .venv
+.venv\Scripts\python -m pip install -U pip -r requirements.txt
+
+# 4. Servizio NSSM "my-fly" sulla porta 5020 (solo su 127.0.0.1)
+nssm install my-fly "C:\webserver\python\fly\.venv\Scripts\python.exe"
+nssm set my-fly AppDirectory "C:\webserver\python\fly"
+nssm set my-fly AppParameters "-m uvicorn app.main:app --host 127.0.0.1 --port 5020 --proxy-headers --forwarded-allow-ips 127.0.0.1"
+nssm set my-fly AppStdout "C:\webserver\python\fly\logs\uvicorn.log"
+nssm set my-fly AppStderr "C:\webserver\python\fly\logs\uvicorn.log"
+nssm set my-fly Start SERVICE_AUTO_START
+nssm start my-fly
+curl http://127.0.0.1:5020/healthz
+```
+Apache: aggiungi un VirtualHost per `fly.tuodominio.it` che fa da reverse proxy verso
+`http://127.0.0.1:5020/` (vedi sezione 5, cambiando solo ServerName e porta).
+Worker: registra l'attività pianificata come in sezione 7, usando `run_worker.bat`
+della cartella `C:\webserver\python\fly`.
+
+### 10.2 Aggiungi il runner per il repo "fly" (una tantum)
+Il runner esistente `C:\webserver\actions-runner` è legato a **leggimi**; per `fly` se ne
+aggiunge un **secondo**, in una cartella separata:
+1. Su GitHub: **https://github.com/peppe83/fly → Settings → Actions → Runners → New self-hosted runner** (Windows). Copia il **token**.
+2. Sulla VPS:
    ```powershell
-   cd D:\actions-runner
-   .\config.cmd --url https://github.com/peppe83/fly --token <TOKEN_MOSTRATO_DA_GITHUB> --labels fly-prod --unattended
-   ```
-   Le label risultanti devono includere `self-hosted, Windows, fly-prod` (combaciano con `deploy.yml`).
-3. Installa il runner **come servizio** (parte all'avvio del VPS):
-   ```powershell
+   mkdir C:\webserver\actions-runner-fly ; cd C:\webserver\actions-runner-fly
+   # scarica/estrai qui l'actions-runner (stessa versione dell'altro runner va bene)
+   .\config.cmd --url https://github.com/peppe83/fly --token <TOKEN> --labels fly --unattended --name fly-vps
    .\svc.cmd install
    .\svc.cmd start
    ```
-   > Esegui il runner con un utente che abbia i permessi per `nssm restart flynotify`
-   > (nelle proprietà del servizio del runner, imposta "Log on as" un amministratore locale).
+3. Il servizio del runner deve poter gestire `my-fly`: nelle sue proprietà (services.msc)
+   impostalo **Log on as** un amministratore locale (come il runner di leggimi).
 
-### 10.3 Come funziona
-- Il workflow `.github/workflows/deploy.yml` scatta su **push a `main`** (salta i soli `.md`), oppure a mano da **Actions → Deploy produzione → Run workflow**.
-- Esegue `scripts\deploy.ps1`, che:
-  1. `git fetch` + `git reset --hard origin/main` (il VPS rispecchia esattamente il remoto; `.env` è gitignorato e resta intatto);
-  2. `pip install -r requirements.txt` **solo** se `requirements.txt` è cambiato;
-  3. `nssm restart flynotify` e verifica `http://127.0.0.1:8000/healthz`.
-- Il worker prende il nuovo codice al ciclo successivo (nessun riavvio necessario).
+### 10.3 Come funziona a regime
+- `push` su `main` → test su GitHub → `deploy` sul runner `fly` → `strumenti\aggiorna.ps1`.
+- Variabili facoltative del repo (Settings → Actions → Variables): `FLY_CARTELLA`, `FLY_SERVIZIO`.
+- Avvio manuale: **Actions → Test e pubblicazione → Run workflow**.
 
-### 10.4 Alternativa senza runner: attività pianificata
-Se preferisci non installare il runner, programma lo stesso script in pull ogni 10 minuti:
-```bat
-schtasks /Create /TN "fly-deploy" /SC MINUTE /MO 10 /RU SYSTEM /RL HIGHEST /F ^
-  /TR "powershell -ExecutionPolicy Bypass -File D:\webserver\apache24\flynotify\scripts\deploy.ps1"
-```
-Lo script è idempotente: se non ci sono novità sul remoto, non riavvia nulla di inutile
-(fa comunque il restart solo quando `HEAD` cambia o `requirements.txt` cambia).
-
-### 10.5 Deploy manuale
-In qualsiasi momento, sul VPS:
+### 10.4 Deploy manuale (senza push)
+Sulla VPS, da una copia aggiornata del codice:
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\webserver\apache24\flynotify\scripts\deploy.ps1 -Force
+powershell -ExecutionPolicy Bypass -File strumenti\aggiorna.ps1 -Sorgente C:\percorso\copia-fly
 ```

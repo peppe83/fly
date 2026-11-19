@@ -1,28 +1,72 @@
-name: Deploy produzione
+# A ogni push su main (o master): test sui server di GitHub, poi pubblicazione sulla VPS.
+#
+# La pubblicazione gira sulla VPS stessa, con un runner GitHub "self-hosted" installato lì
+# (istruzioni nel DEPLOY.md, sezione 10). Il runner esegue strumenti/aggiorna.ps1, che:
+#   1. fa un backup del database (se mysqldump è disponibile);
+#   2. ferma il servizio Windows "my-fly" (i lavori in corso tornano in coda);
+#   3. copia il codice nella cartella di produzione (robocopy /MIR);
+#   4. aggiorna le dipendenze (le migrazioni le applica l'app all'avvio);
+#   5. riavvia il servizio e controlla /healthz.
+#
+# Non vengono mai toccati sul server:
+#   - .env     configurazione di produzione, creata a mano
+#   - logs/    registro del servizio
+#   - .venv/   ambiente virtuale (aggiornato con pip, non copiato)
+#
+# Variabili facoltative (GitHub → Settings → Secrets and variables → Actions → Variables):
+#   FLY_CARTELLA   cartella di produzione sulla VPS (predefinita C:\webserver\python\fly)
+#   FLY_SERVIZIO   nome del servizio NSSM (predefinito my-fly)
 
-# Deploy automatico sul VPS Windows a ogni push su main.
-# Richiede un GitHub Actions **self-hosted runner** installato sul VPS con le
-# label [self-hosted, Windows, fly-prod] (vedi DEPLOY.md, sezione Auto-deploy).
+name: Test e pubblicazione
+
 on:
   push:
-    branches: [ main ]
-    # Evita deploy inutili per modifiche che non toccano l'app.
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - '.env.example'
-  workflow_dispatch: {}      # consente l'avvio manuale dalla tab Actions
+    branches: [main, master]
+  workflow_dispatch:          # pulsante "Run workflow" per pubblicare a mano
 
-# Un solo deploy per volta; non annullare quello in corso.
 concurrency:
-  group: deploy-prod
+  group: deploy-fly           # mai due pubblicazioni insieme
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  deploy:
-    runs-on: [self-hosted, Windows, fly-prod]
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Esegui deploy sul VPS
+      - name: Scarica il codice
+        uses: actions/checkout@v7.0.1
+
+      - name: Installa Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.15"
+          cache: pip
+
+      - name: Installa le dipendenze
+        run: pip install -r requirements.txt
+
+      - name: Esegui i test
+        run: |
+          python -m pytest -q -p no:cacheprovider
+          code=$?
+          if [ "$code" = "5" ]; then echo "Nessun test da eseguire."; exit 0; fi
+          exit $code
+
+  deploy:
+    needs: test
+    runs-on: [self-hosted, windows, fly]
+    timeout-minutes: 20
+    environment: produzione
+    steps:
+      - name: Scarica il codice
+        uses: actions/checkout@v7.0.1
+
+      - name: Aggiorna fly sulla VPS
         shell: powershell
         run: |
-          & "D:\webserver\apache24\flynotify\scripts\deploy.ps1" -AppDir "D:\webserver\apache24\flynotify" -Branch "main"
+          $cartella = if ("${{ vars.FLY_CARTELLA }}") { "${{ vars.FLY_CARTELLA }}" } else { "C:\webserver\python\fly" }
+          $servizio = if ("${{ vars.FLY_SERVIZIO }}") { "${{ vars.FLY_SERVIZIO }}" } else { "my-fly" }
+          & "$env:GITHUB_WORKSPACE\strumenti\aggiorna.ps1" -Sorgente $env:GITHUB_WORKSPACE -Destinazione $cartella -Servizio $servizio -Versione $env:GITHUB_SHA.Substring(0, 7)
