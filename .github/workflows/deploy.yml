@@ -46,12 +46,12 @@ jobs:
           cache: pip
 
       - name: Installa le dipendenze
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest
 
       - name: Esegui i test
         run: |
-          python -m pytest -q -p no:cacheprovider
-          code=$?
+          code=0
+          python -m pytest -q -p no:cacheprovider || code=$?
           if [ "$code" = "5" ]; then echo "Nessun test da eseguire."; exit 0; fi
           exit $code
 
