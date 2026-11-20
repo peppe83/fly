@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Alert, PriceHistory, User
+from ..models import Alert, AlertOffer, PriceHistory, User
 from ..providers.run_cache import RunCache
 from ..schemas import AlertCreate
 from ..services.alert_results import decorate, load_offers, save_ranked
@@ -17,13 +17,18 @@ router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
 def _latest_offer(db: Session, alert_id: str) -> dict | None:
-    """Ultima offerta rilevata (dallo storico prezzi): destinazione e date reali."""
-    row = (db.query(PriceHistory)
-           .filter(PriceHistory.alert_id == alert_id)
-           .order_by(PriceHistory.observed_at.desc()).first())
-    if not row or not row.offer_json:
-        return None
-    o = row.offer_json
+    """L'offerta PIÙ ECONOMICA dell'ultimo controllo (rank 1); se l'alert non ha
+    ancora una classifica salvata ripiega sulla più economica dello storico."""
+    row = (db.query(AlertOffer).filter(AlertOffer.alert_id == alert_id)
+           .order_by(AlertOffer.rank).first())
+    if row and row.offer_json:
+        o = row.offer_json
+    else:
+        h = (db.query(PriceHistory).filter(PriceHistory.alert_id == alert_id)
+             .order_by(PriceHistory.price.asc(), PriceHistory.observed_at.desc()).first())
+        if not h or not h.offer_json:
+            return None
+        o = h.offer_json
     return {
         "destination": o.get("destination"),
         "destination_name": place(o.get("destination"))["label"],
@@ -68,6 +73,43 @@ def list_alerts(user: User = Depends(get_current_user), db: Session = Depends(ge
     return {"alerts": [_serialize(a, _latest_offer(db, a.id)) for a in rows]}
 
 
+def _apply(a: Alert, body: AlertCreate) -> None:
+    """Copia i campi del modulo sull'alert (creazione e modifica)."""
+    a.origin, a.destination = body.origin.upper(), body.destination.upper()
+    a.depart_from, a.depart_to = body.depart_from, body.depart_to or body.depart_from
+    a.return_from, a.return_to = body.return_from, body.return_to or body.return_from
+    a.adults, a.cabin, a.max_stops = body.adults, body.cabin, body.max_stops
+    a.trip_type, a.horizon_months = body.trip_type, body.horizon_months
+    a.depart_dow, a.return_dow = body.depart_dow, body.return_dow
+    a.depart_dows, a.return_dows = body.depart_dows, body.return_dows
+    a.depart_time_from, a.depart_time_to = body.depart_time_from, body.depart_time_to
+    a.return_time_from, a.return_time_to = body.return_time_from, body.return_time_to
+    a.target_price, a.currency = body.target_price, body.currency.upper()
+    a.strategy = body.strategy
+
+
+def _first_check(db: Session, a: Alert) -> dict | None:
+    """Controllo immediato (best effort): prezzo e meta trovata subito visibili."""
+    if not settings.FIRST_CHECK_ON_CREATE:
+        return None
+    try:
+        ranked = SearchService(RunCache()).ranked_offers_for_alert(a)
+        best = ranked[0] if ranked else None
+        if best:
+            from datetime import datetime
+            a.last_price = best.price
+            a.last_checked = datetime.utcnow()
+            db.add(PriceHistory(alert_id=a.id, price=best.price,
+                                currency=best.currency, offer_json=best.model_dump()))
+            save_ranked(db, a.id, ranked)
+            db.commit()
+            db.refresh(a)
+            return _latest_offer(db, a.id)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    return None
+
+
 @router.post("")
 def create_alert(body: AlertCreate, user: User = Depends(get_current_user),
                  db: Session = Depends(get_db)):
@@ -75,44 +117,27 @@ def create_alert(body: AlertCreate, user: User = Depends(get_current_user),
     if count >= settings.MAX_ALERTS_PER_USER:
         raise HTTPException(status_code=400,
                             detail=f"Raggiunto il massimo di {settings.MAX_ALERTS_PER_USER} alert")
-
-    a = Alert(
-        user_id=user.id,
-        origin=body.origin.upper(), destination=body.destination.upper(),
-        depart_from=body.depart_from, depart_to=body.depart_to or body.depart_from,
-        return_from=body.return_from, return_to=body.return_to or body.return_from,
-        adults=body.adults, cabin=body.cabin, max_stops=body.max_stops,
-        trip_type=body.trip_type, horizon_months=body.horizon_months,
-        depart_dow=body.depart_dow, return_dow=body.return_dow,
-        depart_dows=body.depart_dows, return_dows=body.return_dows,
-        depart_time_from=body.depart_time_from, depart_time_to=body.depart_time_to,
-        return_time_from=body.return_time_from, return_time_to=body.return_time_to,
-        target_price=body.target_price, currency=body.currency.upper(),
-        strategy=body.strategy, status="active",
-    )
+    a = Alert(user_id=user.id, status="active")
+    _apply(a, body)
     db.add(a)
     db.commit()
     db.refresh(a)
+    return _serialize(a, _first_check(db, a))
 
-    # Primo check immediato (best effort), per mostrare subito prezzo e meta trovata
-    last_offer = None
-    if settings.FIRST_CHECK_ON_CREATE:
-        try:
-            ranked = SearchService(RunCache()).ranked_offers_for_alert(a)
-            best = ranked[0] if ranked else None
-            if best:
-                from datetime import datetime
-                a.last_price = best.price
-                a.last_checked = datetime.utcnow()
-                db.add(PriceHistory(alert_id=a.id, price=best.price,
-                                    currency=best.currency, offer_json=best.model_dump()))
-                save_ranked(db, a.id, ranked)
-                db.commit()
-                db.refresh(a)
-                last_offer = _latest_offer(db, a.id)
-        except Exception:  # noqa: BLE001
-            pass
 
+@router.put("/{alert_id}")
+def update_alert(alert_id: str, body: AlertCreate, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Modifica un alert: stato e storico prezzi restano; le soluzioni salvate
+    (riferite ai vecchi criteri) si azzerano e si ricalcolano subito."""
+    a = _get_owned(alert_id, user, db)
+    _apply(a, body)
+    a.last_price = None
+    a.last_checked = None
+    db.query(AlertOffer).filter(AlertOffer.alert_id == a.id).delete()
+    db.commit()
+    db.refresh(a)
+    last_offer = _first_check(db, a) if a.status == "active" else None
     return _serialize(a, last_offer)
 
 

@@ -464,9 +464,17 @@ function initAlerts() {
   const form = document.getElementById("alertForm");
   const errBox = document.getElementById("alertFormError");
 
+  let rows = [];
+  let editingId = null;
+  const newBox = document.getElementById("newAlert");
+  const submitBtn = document.getElementById("alertSubmit");
+  const cancelBtn = document.getElementById("alertCancel");
+  const advBox = document.getElementById("advAlert");
+  const openBox = (box) => bootstrap.Collapse.getOrCreateInstance(box, { toggle: false }).show();
+
   async function load() {
     const data = await api("GET", "/api/alerts");
-    const rows = data.alerts || [];
+    rows = data.alerts || [];
     list.innerHTML = rows.length
       ? rows.map(alertCard).join("")
       : '<p class="text-muted">Nessun alert. Creane uno con “+ Nuovo alert”.</p>';
@@ -476,50 +484,143 @@ function initAlerts() {
   const dows = (id) => Array.from(document.querySelectorAll("#" + id + " input:checked"))
     .map((c) => c.value).join(",") || null;
   const val = (id) => document.getElementById(id).value || null;
+  const el = (id) => document.getElementById(id);
 
-  // I campi legati al ritorno spariscono per "solo andata" / "in giornata".
-  function syncTripType() {
-    const roundTrip = tripSel.value === "round_trip";
-    document.querySelectorAll("[data-ret-only]").forEach((el) => {
-      el.classList.toggle("d-none", !roundTrip);
-    });
+  // Fasce orarie: la select compila i campi "dalle/entro"; "Personalizzata" li mostra.
+  const PRESETS = {
+    depart: { sel: el("a_depart_preset"), from: el("a_depart_time_from"), to: el("a_depart_time_to") },
+    return: { sel: el("a_return_preset"), from: el("a_return_time_from"), to: el("a_return_time_to") },
+  };
+  function syncPreset(kind) {
+    const P = PRESETS[kind];
+    document.querySelectorAll('[data-time-custom="' + kind + '"]')
+      .forEach((n) => n.classList.toggle("d-none", P.sel.value !== "custom"));
   }
-  tripSel.addEventListener("change", syncTripType);
+  function onPreset(kind) {
+    const P = PRESETS[kind];
+    if (P.sel.value && P.sel.value !== "custom") {
+      const [f, t] = P.sel.value.split("-");
+      P.from.value = f; P.to.value = t;
+    } else if (!P.sel.value) { P.from.value = ""; P.to.value = ""; }
+    syncPreset(kind);
+  }
+  function loadPreset(kind, from, to) {
+    const P = PRESETS[kind];
+    P.from.value = from || ""; P.to.value = to || "";
+    const key = (from || "") + "-" + (to || "");
+    const known = [...P.sel.options].some((o) => o.value === key);
+    P.sel.value = known ? key : ((from || to) ? "custom" : "");
+    syncPreset(kind);
+  }
+  ["depart", "return"].forEach((k) => PRESETS[k].sel.addEventListener("change", () => onPreset(k)));
+
+  // Ritorno (data, giorni): solo per A/R. Fascia di rientro: A/R e in giornata.
+  function syncTripType() {
+    const t = tripSel.value;
+    document.querySelectorAll("[data-ret-only]").forEach((n) => n.classList.toggle("d-none", t !== "round_trip"));
+    document.querySelectorAll("[data-ret-time]").forEach((n) => n.classList.toggle("d-none", t === "one_way"));
+    syncPreset("depart"); syncPreset("return");
+  }
+  tripSel.addEventListener("change", () => {
+    syncTripType();
+    // In giornata: propone partenza al mattino e rientro nel pomeriggio/sera.
+    if (tripSel.value === "same_day" && !PRESETS.depart.sel.value && !PRESETS.return.sel.value) {
+      PRESETS.depart.sel.value = "05:00-12:00"; onPreset("depart");
+      PRESETS.return.sel.value = "14:00-23:59"; onPreset("return");
+    }
+  });
   syncTripType();
+
+  function setMode(id) {
+    editingId = id;
+    submitBtn.textContent = id ? "Salva modifiche" : "Crea";
+    cancelBtn.hidden = !id;
+    errBox.textContent = "";
+  }
+
+  function resetForm() {
+    form.reset();
+    ["depart", "return"].forEach((k) => loadPreset(k, "", ""));
+    syncTripType();
+    setMode(null);
+  }
+
+  function fillForm(a) {
+    form.reset();
+    el("a_origin").value = a.origin;
+    const any = a.destination === "ANY";
+    el("a_anywhere").checked = any;
+    el("a_destination").value = any ? "" : a.destination;
+    el("a_depart_from").value = a.depart_from || "";
+    el("a_depart_to").value = a.depart_to && a.depart_to !== a.depart_from ? a.depart_to : "";
+    el("a_return_from").value = a.return_from || "";
+    el("a_strategy").value = a.strategy;
+    el("a_target_price").value = a.target_price != null ? a.target_price : "";
+    el("a_currency").value = a.currency || "EUR";
+    tripSel.value = a.trip_type || "round_trip";
+    el("a_horizon").value = a.horizon_months || "";
+    el("a_max_stops").value = a.max_stops != null ? a.max_stops : "";
+    const check = (prefix, csv) => {
+      const on = (csv || "").split(",");
+      for (let i = 1; i <= 7; i++) el(prefix + i).checked = on.includes(String(i));
+    };
+    check("dd", a.depart_dows); check("rd", a.return_dows);
+    loadPreset("depart", a.depart_time_from, a.depart_time_to);
+    loadPreset("return", a.return_time_from, a.return_time_to);
+    syncTripType();
+    setMode(a.id);
+    openBox(newBox); openBox(advBox);
+    newBox.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  el("newAlertBtn").addEventListener("click", () => {
+    resetForm();
+    bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).toggle();
+  });
+  cancelBtn.addEventListener("click", () => {
+    resetForm();
+    bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).hide();
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     errBox.textContent = "";
-    const anywhere = document.getElementById("a_anywhere").checked;
-    const roundTrip = tripSel.value === "round_trip";
+    const anywhere = el("a_anywhere").checked;
+    const t = tripSel.value;
+    const roundTrip = t === "round_trip";
+    const hasRetTime = t !== "one_way";
     const body = {
-      origin: document.getElementById("a_origin").value.trim().toUpperCase(),
-      destination: anywhere ? "ANY" : document.getElementById("a_destination").value.trim().toUpperCase(),
-      depart_from: document.getElementById("a_depart_from").value,
-      depart_to: document.getElementById("a_depart_to").value || null,
-      return_from: roundTrip ? (document.getElementById("a_return_from").value || null) : null,
-      strategy: document.getElementById("a_strategy").value,
-      currency: (document.getElementById("a_currency").value || "EUR").toUpperCase(),
-      trip_type: tripSel.value,
+      origin: el("a_origin").value.trim().toUpperCase(),
+      destination: anywhere ? "ANY" : el("a_destination").value.trim().toUpperCase(),
+      depart_from: el("a_depart_from").value,
+      depart_to: el("a_depart_to").value || null,
+      return_from: roundTrip ? (el("a_return_from").value || null) : null,
+      strategy: el("a_strategy").value,
+      currency: (el("a_currency").value || "EUR").toUpperCase(),
+      trip_type: t,
       depart_dows: dows("a_depart_dows"),
       return_dows: roundTrip ? dows("a_return_dows") : null,
       depart_time_from: val("a_depart_time_from"),
       depart_time_to: val("a_depart_time_to"),
-      return_time_from: roundTrip ? val("a_return_time_from") : null,
-      return_time_to: roundTrip ? val("a_return_time_to") : null,
+      return_time_from: hasRetTime ? val("a_return_time_from") : null,
+      return_time_to: hasRetTime ? val("a_return_time_to") : null,
     };
-    const tp = document.getElementById("a_target_price").value;
-    if (tp) body.target_price = parseFloat(tp);
-    const hz = document.getElementById("a_horizon").value;
+    const tp = el("a_target_price").value;
+    body.target_price = tp ? parseFloat(tp) : null;
+    const hz = el("a_horizon").value;
     if (hz) body.horizon_months = parseInt(hz, 10);
-    const ms = document.getElementById("a_max_stops").value;
+    const ms = el("a_max_stops").value;
     if (ms !== "") body.max_stops = parseInt(ms, 10);
+    submitBtn.disabled = true;
     try {
-      await api("POST", "/api/alerts", body);
-      form.reset();
-      syncTripType();
+      const wasEdit = !!editingId;
+      if (wasEdit) await api("PUT", "/api/alerts/" + editingId, body);
+      else await api("POST", "/api/alerts", body);
+      resetForm();
+      if (wasEdit) bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).hide();
       await load();
     } catch (err) { errBox.textContent = err.message; }
+    finally { submitBtn.disabled = false; }
   });
 
   list.addEventListener("click", async (e) => {
@@ -527,6 +628,11 @@ function initAlerts() {
     if (!btn) return;
     const id = btn.dataset.id, action = btn.dataset.action;
     try {
+      if (action === "edit") {
+        const a = rows.find((r) => r.id === id);
+        if (a) fillForm(a);
+        return;
+      }
       if (action === "delete") {
         if (!confirm("Eliminare questo alert?")) return;
         await api("DELETE", "/api/alerts/" + id);
@@ -537,7 +643,12 @@ function initAlerts() {
     } catch (err) { alert(err.message); }
   });
 
-  load();
+  // /alerts?edit=<id> (link "Modifica" dalla pagina di dettaglio)
+  load().then(() => {
+    const id = new URLSearchParams(location.search).get("edit");
+    const a = id && rows.find((r) => r.id === id);
+    if (a) fillForm(a);
+  });
 }
 
 // Che cosa cerca un alert (la definizione, non un giorno specifico).
@@ -590,7 +701,8 @@ function alertCard(a) {
     const name = o.destination_name && o.destination_name !== code ? o.destination_name : "";
     const dep = fmtDow(o.depart_date) + " " + fmtDate(o.depart_date) + (o.depart_time ? " " + o.depart_time : "");
     const ret = o.return_date ? " → " + fmtDow(o.return_date) + " " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time : "") : "";
-    found = '<div class="mb-1" title="' + esc((name || code) + " (" + code + ")") + '">'
+    found = '<div class="small text-muted">Offerta più economica</div>'
+      + '<div class="mb-1" title="' + esc((name || code) + " (" + code + ")") + '">'
       + '<span class="fw-semibold">' + esc(name || code) + "</span>"
       + (name ? ' <span class="badge text-bg-light border ms-1">' + esc(code) + "</span>" : "") + "</div>"
       + '<div class="text-muted small">' + esc(dep + ret) + "</div>"
@@ -609,7 +721,8 @@ function alertCard(a) {
     + def
     + found
     + '<div class="d-flex flex-wrap gap-2 mt-3">'
-    + '<a class="btn btn-sm btn-primary" href="/alerts/' + a.id + '">Vedi tutte le soluzioni →</a>' + toggle
+    + '<a class="btn btn-sm btn-primary" href="/alerts/' + a.id + '">Vedi tutte le soluzioni →</a>'
+    + '<button class="btn btn-sm btn-outline-primary" data-action="edit" data-id="' + a.id + '">Modifica</button>' + toggle
     + '<button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="' + a.id + '">Elimina</button>'
     + "</div></div></div></div>";
 }
@@ -661,7 +774,8 @@ function initAlertDetail() {
       const dest = a.destination === "ANY" ? "Ovunque 🌍" : a.destination;
       head.innerHTML = '<h1 class="h4 mb-1">' + esc(a.origin) + " → " + esc(dest) + "</h1>"
         + '<div class="small text-muted">' + esc(data.origin_name || "") + "</div>"
-        + '<div class="small text-muted">' + esc(alertDefinition(a)) + "</div>";
+        + '<div class="small text-muted">' + esc(alertDefinition(a)) + "</div>"
+        + '<a class="btn btn-sm btn-outline-primary mt-2" href="/alerts?edit=' + encodeURIComponent(a.id) + '">Modifica alert</a>';
       offers = data.offers || [];
       if (!offers.length) {
         status.textContent = "Nessuna soluzione ancora: compariranno al prossimo controllo dell'alert.";

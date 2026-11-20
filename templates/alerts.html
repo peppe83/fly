@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">I miei alert</h1>
-  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#newAlert">+ Nuovo alert</button>
+  <button class="btn btn-primary" id="newAlertBtn" type="button">+ Nuovo alert</button>
 </div>
 
 <div class="card card-body shadow-sm mb-3" id="schedCard">
@@ -83,7 +83,7 @@
           <select id="a_trip_type" class="form-select">
             <option value="round_trip">Andata e ritorno</option>
             <option value="one_way">Solo andata</option>
-            <option value="same_day">In giornata</option>
+            <option value="same_day">In giornata (andata e ritorno nello stesso giorno)</option>
           </select>
         </div>
         <div class="col-6 col-md-3">
@@ -119,27 +119,49 @@
             <input type="checkbox" class="btn-check" id="rd7" value="7"><label class="btn btn-outline-secondary" for="rd7">Dom</label>
           </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label">Fascia di partenza</label>
+          <select id="a_depart_preset" class="form-select">
+            <option value="">Qualsiasi orario</option>
+            <option value="05:00-12:00">Mattina (05–12)</option>
+            <option value="12:00-18:00">Pomeriggio (12–18)</option>
+            <option value="18:00-23:59">Sera (dalle 18)</option>
+            <option value="custom">Personalizzata…</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-6" data-ret-time>
+          <label class="form-label">Fascia di rientro</label>
+          <select id="a_return_preset" class="form-select">
+            <option value="">Qualsiasi orario</option>
+            <option value="05:00-12:00">Mattina (05–12)</option>
+            <option value="12:00-18:00">Pomeriggio (12–18)</option>
+            <option value="14:00-23:59">Pomeriggio / sera (dalle 14)</option>
+            <option value="18:00-23:59">Sera (dalle 18)</option>
+            <option value="custom">Personalizzata…</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3" data-time-custom="depart">
           <label class="form-label">Partenza dalle</label>
           <input id="a_depart_time_from" type="time" class="form-control">
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-3" data-time-custom="depart">
           <label class="form-label">Partenza entro</label>
           <input id="a_depart_time_to" type="time" class="form-control">
         </div>
-        <div class="col-6 col-md-3" data-ret-only>
-          <label class="form-label">Ritorno dalle</label>
+        <div class="col-6 col-md-3" data-ret-time data-time-custom="return">
+          <label class="form-label">Rientro dalle</label>
           <input id="a_return_time_from" type="time" class="form-control">
         </div>
-        <div class="col-6 col-md-3" data-ret-only>
-          <label class="form-label">Ritorno entro</label>
+        <div class="col-6 col-md-3" data-ret-time data-time-custom="return">
+          <label class="form-label">Rientro entro</label>
           <input id="a_return_time_to" type="time" class="form-control">
         </div>
       </div>
     </div>
 
     <div class="d-flex align-items-center gap-3 mt-3">
-      <button class="btn btn-success" type="submit">Crea</button>
+      <button class="btn btn-success" type="submit" id="alertSubmit">Crea</button>
+      <button class="btn btn-outline-secondary" type="button" id="alertCancel" hidden>Annulla modifica</button>
       <div id="alertFormError" class="text-danger small"></div>
     </div>
   </form>
