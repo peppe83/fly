@@ -22,6 +22,10 @@ name: Test e pubblicazione
 on:
   push:
     branches: [main, master]
+    paths-ignore:             # modifiche solo a questi file non ridistribuiscono
+      - '**.md'
+      - '.gitignore'
+      - '.env.example'
   workflow_dispatch:          # pulsante "Run workflow" per pubblicare a mano
 
 concurrency:
