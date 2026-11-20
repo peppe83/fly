@@ -8,3 +8,7 @@ footer { border-top: 1px solid #e9edf3; margin-top: 2rem; }
 @media (max-width: 575.98px) {
   .price { font-size: 1.2rem; }
 }
+
+/* Evidenza dell'alert appena salvato */
+@keyframes just-saved { 0% { box-shadow: 0 0 0 .35rem rgba(25,135,84,.55); } 100% { box-shadow: 0 0 0 0 rgba(25,135,84,0); } }
+.alert-card.just-saved { animation: just-saved 2.5s ease-out; border-color: #198754; }

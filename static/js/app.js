@@ -468,9 +468,25 @@ function initAlerts() {
   let editingId = null;
   const newBox = document.getElementById("newAlert");
   const submitBtn = document.getElementById("alertSubmit");
-  const cancelBtn = document.getElementById("alertCancel");
   const advBox = document.getElementById("advAlert");
-  const openBox = (box) => bootstrap.Collapse.getOrCreateInstance(box, { toggle: false }).show();
+  const modal = bootstrap.Modal.getOrCreateInstance(newBox);
+  const toastEl = document.getElementById("saveToast");
+
+  // Conferma di salvataggio ben visibile: toast con l'ora + card evidenziata.
+  function confirmSaved(text, alertId) {
+    const now = new Date();
+    const hhmm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0")
+      + ":" + String(now.getSeconds()).padStart(2, "0");
+    document.getElementById("saveToastText").textContent = "✓ " + text + " alle " + hhmm;
+    bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 6000 }).show();
+    const card = alertId && list.querySelector('[data-alert-id="' + alertId + '"]');
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.remove("just-saved"); void card.offsetWidth; card.classList.add("just-saved");
+      const stamp = card.querySelector(".saved-stamp");
+      if (stamp) { stamp.textContent = "Salvato alle " + hhmm; stamp.hidden = false; }
+    }
+  }
 
   async function load() {
     const data = await api("GET", "/api/alerts");
@@ -534,7 +550,7 @@ function initAlerts() {
   function setMode(id) {
     editingId = id;
     submitBtn.textContent = id ? "Salva modifiche" : "Crea";
-    cancelBtn.hidden = !id;
+    document.getElementById("alertModalTitle").textContent = id ? "Modifica alert" : "Nuovo alert";
     errBox.textContent = "";
   }
 
@@ -569,18 +585,13 @@ function initAlerts() {
     loadPreset("return", a.return_time_from, a.return_time_to);
     syncTripType();
     setMode(a.id);
-    openBox(newBox); openBox(advBox);
-    newBox.scrollIntoView({ behavior: "smooth", block: "start" });
+    bootstrap.Collapse.getOrCreateInstance(advBox, { toggle: false }).show();
+    modal.show();
   }
 
-  el("newAlertBtn").addEventListener("click", () => {
-    resetForm();
-    bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).toggle();
-  });
-  cancelBtn.addEventListener("click", () => {
-    resetForm();
-    bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).hide();
-  });
+  el("newAlertBtn").addEventListener("click", () => { resetForm(); modal.show(); });
+  // Chiudendo il modal senza salvare si torna alla modalità "nuovo alert".
+  newBox.addEventListener("hidden.bs.modal", resetForm);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -614,11 +625,11 @@ function initAlerts() {
     submitBtn.disabled = true;
     try {
       const wasEdit = !!editingId;
-      if (wasEdit) await api("PUT", "/api/alerts/" + editingId, body);
-      else await api("POST", "/api/alerts", body);
-      resetForm();
-      if (wasEdit) bootstrap.Collapse.getOrCreateInstance(newBox, { toggle: false }).hide();
+      const saved = wasEdit ? await api("PUT", "/api/alerts/" + editingId, body)
+                            : await api("POST", "/api/alerts", body);
+      modal.hide();
       await load();
+      confirmSaved(wasEdit ? "Alert aggiornato" : "Alert creato", saved && saved.id);
     } catch (err) { errBox.textContent = err.message; }
     finally { submitBtn.disabled = false; }
   });
@@ -713,8 +724,9 @@ function alertCard(a) {
     found = '<div class="text-muted small">nessuna offerta ancora rilevata</div>';
   }
 
-  return '<div class="col-12 col-md-6"><div class="card shadow-sm h-100 alert-card ' + (paused ? "status-paused" : "") + '">'
+  return '<div class="col-12 col-md-6"><div class="card shadow-sm h-100 alert-card ' + (paused ? "status-paused" : "") + '" data-alert-id="' + a.id + '">'
     + '<div class="card-body">'
+    + '<div class="saved-stamp small text-success fw-semibold mb-1" hidden></div>'
     + '<div class="d-flex justify-content-between align-items-start">'
     + '<h5 class="card-title mb-1"><a class="text-decoration-none text-reset" href="/alerts/' + a.id + '">'
     + esc(a.origin) + " → " + esc(dest) + "</a></h5>" + badge + "</div>"

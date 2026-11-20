@@ -28,8 +28,14 @@
   </div>
 </div>
 
-<div class="collapse mb-4" id="newAlert">
-  <form id="alertForm" class="card card-body shadow-sm">
+<div class="modal fade" id="newAlert" tabindex="-1" aria-labelledby="alertModalTitle" aria-hidden="true">
+ <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <form id="alertForm" class="modal-content">
+   <div class="modal-header">
+    <h2 class="modal-title h5" id="alertModalTitle">Nuovo alert</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+   </div>
+   <div class="modal-body">
     <div class="row g-3">
       <div class="col-6 col-md-3">
         <label class="form-label">Partenza (IATA)</label>
@@ -159,12 +165,23 @@
       </div>
     </div>
 
-    <div class="d-flex align-items-center gap-3 mt-3">
-      <button class="btn btn-success" type="submit" id="alertSubmit">Crea</button>
-      <button class="btn btn-outline-secondary" type="button" id="alertCancel" hidden>Annulla modifica</button>
-      <div id="alertFormError" class="text-danger small"></div>
-    </div>
+   </div>
+   <div class="modal-footer">
+    <div id="alertFormError" class="text-danger small me-auto"></div>
+    <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Annulla</button>
+    <button class="btn btn-success" type="submit" id="alertSubmit">Crea</button>
+   </div>
   </form>
+ </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="saveToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="saveToastText"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Chiudi"></button>
+    </div>
+  </div>
 </div>
 
 <div id="alertsList" class="row g-3"></div>
