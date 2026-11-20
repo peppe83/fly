@@ -166,6 +166,8 @@ class TravelpayoutsClient(FlightProvider):
         # L'arrivo non è fornito direttamente: lo stimiamo da partenza + durata
         # tratta (duration_to, in minuti) quando disponibile.
         arrival_time = self._add_minutes(dep_full, d.get("duration_to") or d.get("duration"))
+        # Idem per il ritorno: partenza del ritorno + durata (duration_back).
+        return_arrival = self._add_minutes(ret_full, d.get("duration_back"))
         return FlightOffer(
             origin=d.get("origin", origin),
             destination=d.get("destination", destination),
@@ -176,6 +178,7 @@ class TravelpayoutsClient(FlightProvider):
             stops=d.get("transfers"),
             carriers=[carrier] if carrier else [],
             depart_time=depart_time, arrival_time=arrival_time, return_time=return_time,
+            return_arrival_time=return_arrival,
             source=Source(provider=self.name, carrier=carrier),
         )
 

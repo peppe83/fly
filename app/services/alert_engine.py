@@ -1,58 +1,28 @@
-"""Alert Engine: decide se un prezzo merita un avviso.
+"""Alert Engine: decide quali soluzioni di un alert vanno comunicate.
 
-Strategie:
-  - threshold : prezzo <= soglia (target_price)
-  - drop      : prezzo <= media ultimi 7 gg * (1 - DROP_PCT)
-  - deal      : nuovo minimo storico (o, senza storico, sotto soglia)
-Anti-spam: notifica solo se migliora l'ultimo prezzo già notificato.
+Regola unica (la "soglia" è facoltativa):
+  - con prezzo soglia (target_price): si comunicano le soluzioni <= soglia;
+  - senza soglia: si comunicano TUTTE le soluzioni trovate nel controllo.
+Nessun anti-ripetizione: se l'elenco c'è, viene comunicato a OGNI controllo.
 """
 from __future__ import annotations
 
 import hashlib
-import statistics
-from datetime import date
-
-DROP_PCT = 0.15
+import uuid
 
 
-def build_dedupe_key(alert_id: str, price: float, day: date | None = None) -> str:
-    day = day or date.today()
-    raw = f"{alert_id}:{round(float(price))}:{day.isoformat()}"
-    return hashlib.sha256(raw.encode()).hexdigest()
+def qualifying_offers(alert, ranked: list) -> list:
+    """Le soluzioni da comunicare (ranked è già ordinato dalla più economica)."""
+    if alert.target_price is None:
+        return list(ranked)
+    target = float(alert.target_price)
+    return [o for o in ranked if float(o.price) <= target]
 
 
-def should_notify(alert, price: float, history_prices: list[float],
-                  last_notified_price: float | None) -> tuple[bool, str | None]:
-    target = float(alert.target_price) if alert.target_price is not None else None
-    reason: str | None = None
+def reason_for(alert) -> str:
+    return "below_target" if alert.target_price is not None else "all_results"
 
-    if alert.strategy == "threshold":
-        if target is None or price > target:
-            return False, None
-        reason = "below_target"
 
-    elif alert.strategy == "drop":
-        if not history_prices:
-            return False, None
-        avg = statistics.mean(history_prices)
-        if price > avg * (1 - DROP_PCT):
-            return False, None
-        reason = "price_drop"
-
-    elif alert.strategy == "deal":
-        if history_prices:
-            if price > min(history_prices):
-                return False, None
-            reason = "good_deal"
-        elif target is not None and price <= target:
-            reason = "good_deal"
-        else:
-            return False, None
-    else:
-        return False, None
-
-    # Solo miglioramenti: niente avviso se non è migliore dell'ultimo notificato
-    if last_notified_price is not None and price >= last_notified_price:
-        return False, None
-
-    return True, reason
+def build_notification_key(alert_id: str) -> str:
+    """Chiave univoca per ogni invio (la tabella notifications è il registro degli avvisi)."""
+    return hashlib.sha256(f"{alert_id}|{uuid.uuid4()}".encode()).hexdigest()

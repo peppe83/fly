@@ -62,16 +62,9 @@
         <input id="a_return_from" type="date" class="form-control">
       </div>
       <div class="col-6 col-md-3">
-        <label class="form-label">Strategia</label>
-        <select id="a_strategy" class="form-select">
-          <option value="threshold">Sotto soglia</option>
-          <option value="drop">Calo di prezzo</option>
-          <option value="deal">Buon affare</option>
-        </select>
-      </div>
-      <div class="col-6 col-md-3">
-        <label class="form-label">Prezzo soglia</label>
-        <input id="a_target_price" type="number" class="form-control" placeholder="120">
+        <label class="form-label">Prezzo soglia <span class="text-muted">(facoltativo)</span></label>
+        <input id="a_target_price" type="number" min="1" class="form-control" placeholder="es. 60">
+        <div class="form-text">Ti scrivo solo per le soluzioni sotto questo prezzo. Vuoto: ti mando tutte le soluzioni trovate.</div>
       </div>
       <div class="col-6 col-md-3">
         <label class="form-label">Valuta</label>

@@ -9,7 +9,9 @@ import pathlib
 import urllib.request
 
 BASE = "https://api.travelpayouts.com/data/it/"
-OUT = pathlib.Path(__file__).resolve().parent.parent / "app" / "data" / "iata.json"
+DATA = pathlib.Path(__file__).resolve().parent.parent / "app" / "data"
+OUT = DATA / "iata.json"
+OUT_AIRLINES = DATA / "airlines.json"
 
 
 def scarica(nome: str) -> list[dict]:
@@ -28,6 +30,16 @@ def main() -> None:
     OUT.write_text(json.dumps({"k": paesi, "c": citta, "a": aeroporti},
                               ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"scritto {OUT}: {len(paesi)} paesi, {len(citta)} città, {len(aeroporti)} aeroporti")
+
+    # compagnie aeree: codice IATA -> nome (se manca in italiano, quello inglese)
+    compagnie = {}
+    for c in scarica("airlines"):
+        nome = c.get("name") or (c.get("name_translations") or {}).get("en")
+        if c.get("code") and nome:
+            compagnie[c["code"]] = nome
+    OUT_AIRLINES.write_text(json.dumps(compagnie, ensure_ascii=False, separators=(",", ":")),
+                            encoding="utf-8")
+    print(f"scritto {OUT_AIRLINES}: {len(compagnie)} compagnie")
 
 
 if __name__ == "__main__":

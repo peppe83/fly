@@ -11,49 +11,20 @@ Nessuna cache persistente: ogni run fa chiamate fresche.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
-
-from sqlalchemy import select
+from datetime import datetime
 
 from .config import settings
 from .db import SessionLocal, engine
 from .models import Alert, EmailLog, Notification, PriceHistory, RunLog, User
 from .providers.run_cache import RunCache
 from .services import email as email_svc
-from .services.alert_engine import build_dedupe_key, should_notify
-from .services.alert_results import save_ranked
+from .services.alert_engine import build_notification_key, qualifying_offers, reason_for
+from .services.alert_results import alert_title, offer_summary, save_ranked
 from .services.schedule import is_due
 from .services.search import SearchService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("flynotify.worker")
-
-_REASON = {"below_target": "sotto soglia", "price_drop": "prezzo in calo", "good_deal": "buon affare"}
-
-
-def _fmt_date(s: str | None) -> str:
-    """Data ISO (AAAA-MM-GG) -> gg-mm-aaaa per la email. Lascia intatto il resto."""
-    if s and len(s) >= 10 and s[4] == "-" and s[7] == "-":
-        return f"{s[8:10]}-{s[5:7]}-{s[0:4]}"
-    return s or ""
-
-
-def _history_prices(db, alert_id: str, days: int = 7) -> list[float]:
-    since = datetime.utcnow() - timedelta(days=days)
-    rows = db.execute(
-        select(PriceHistory.price).where(
-            PriceHistory.alert_id == alert_id, PriceHistory.observed_at >= since)
-    ).scalars().all()
-    return [float(p) for p in rows]
-
-
-def _last_notified_price(db, alert_id: str) -> float | None:
-    row = db.execute(
-        select(Notification.price).where(Notification.alert_id == alert_id)
-        .order_by(Notification.sent_at.desc()).limit(1)
-    ).scalar_one_or_none()
-    return float(row) if row is not None else None
-
 
 def run_worker() -> None:
     if not settings.ENABLE_ALERTS:
@@ -97,34 +68,31 @@ def run_worker() -> None:
                 db.add(PriceHistory(alert_id=alert.id, price=best.price,
                                     currency=best.currency, offer_json=best.model_dump()))
 
-                history = _history_prices(db, alert.id)
-                last_notified = _last_notified_price(db, alert.id)
-                ok, reason = should_notify(alert, best.price, history, last_notified)
-                if not ok:
+                # Soluzioni da comunicare: <= soglia se impostata, altrimenti tutte.
+                matching = qualifying_offers(alert, ranked)
+                if not matching:
                     continue
+                db.add(Notification(alert_id=alert.id, price=matching[0].price,
+                                    reason=reason_for(alert),
+                                    dedupe_key=build_notification_key(alert.id)))
 
-                dedupe = build_dedupe_key(alert.id, best.price)
-                exists = db.query(Notification).filter(
-                    Notification.dedupe_key == dedupe).first()
-                if exists:
-                    continue
-                db.add(Notification(alert_id=alert.id, price=best.price,
-                                    reason=reason, dedupe_key=dedupe))
-
-                dest = best.destination
-                dates = _fmt_date(best.depart_date) + (f" → {_fmt_date(best.return_date)}" if best.return_date else "")
                 triggered.append({
-                    "route": f"{best.origin} → {dest}",
-                    "price": float(best.price), "currency": best.currency,
-                    "dates": dates, "reason": reason,
-                    "source": best.source.provider,
+                    "title": alert_title(alert),
+                    "reason": reason_for(alert),
+                    "threshold": float(alert.target_price) if alert.target_price is not None else None,
+                    "currency": alert.currency,
+                    "offers": [{**offer_summary(o.model_dump()), "price": float(o.price),
+                                "currency": o.currency, "source": o.source.provider}
+                               for o in matching],
                 })
 
             # UNA email riepilogativa per utente
             if triggered:
                 html = email_svc.build_digest_html(
                     user.full_name, triggered)
-                subject = f"✈️ flynotify — {len(triggered)} nuovi avvisi di prezzo"
+                n_off = sum(len(t["offers"]) for t in triggered)
+                subject = (f"✈️ flynotify — {n_off} "
+                           f"{'soluzione' if n_off == 1 else 'soluzioni'} per i tuoi alert")
                 sent, err = email_svc.send_email(user.email, subject, html)
                 db.add(EmailLog(user_id=user.id, to_email=user.email, subject=subject,
                                 status="sent" if sent else "error", error_text=err))

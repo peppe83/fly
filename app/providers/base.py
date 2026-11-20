@@ -25,6 +25,7 @@ class FlightOffer(BaseModel):
     depart_time: Optional[str] = None   # orario partenza (HH:MM)
     arrival_time: Optional[str] = None  # orario arrivo a destinazione (HH:MM)
     return_time: Optional[str] = None   # orario partenza del ritorno (HH:MM)
+    return_arrival_time: Optional[str] = None  # orario arrivo del ritorno (HH:MM)
     source: Source
 
     @property

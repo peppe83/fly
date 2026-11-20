@@ -341,7 +341,8 @@ function offerCard(o) {
     + '<div class="price">' + money(o.price, o.currency) + "</div>"
     + '<div class="small text-muted">' + esc(fmtDate(o.depart_date))
     + (o.return_date ? " → " + esc(fmtDate(o.return_date)) : "") + "</div>"
-    + (times ? '<div class="small">🕐 ' + esc(times) + "</div>" : "")
+    + (times ? '<div class="small">🛫 ' + esc(times) + "</div>" : "")
+    + (o.return_time ? '<div class="small">🛬 ' + esc(o.return_time + (o.return_arrival_time ? " → " + o.return_arrival_time : "")) + "</div>" : "")
     + (meta ? '<div class="small text-muted mb-2">' + meta + "</div>" : '<div class="mb-2"></div>')
     + sourceBadge(o.source) + "</div></div></div>";
 }
@@ -570,7 +571,6 @@ function initAlerts() {
     el("a_depart_from").value = a.depart_from || "";
     el("a_depart_to").value = a.depart_to && a.depart_to !== a.depart_from ? a.depart_to : "";
     el("a_return_from").value = a.return_from || "";
-    el("a_strategy").value = a.strategy;
     el("a_target_price").value = a.target_price != null ? a.target_price : "";
     el("a_currency").value = a.currency || "EUR";
     tripSel.value = a.trip_type || "round_trip";
@@ -606,7 +606,6 @@ function initAlerts() {
       depart_from: el("a_depart_from").value,
       depart_to: el("a_depart_to").value || null,
       return_from: roundTrip ? (el("a_return_from").value || null) : null,
-      strategy: el("a_strategy").value,
       currency: (el("a_currency").value || "EUR").toUpperCase(),
       trip_type: t,
       depart_dows: dows("a_depart_dows"),
@@ -668,7 +667,6 @@ function alertDefinition(a) {
   const DOW = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
   const dowTxt = (csv) => (csv || "").split(",").filter(Boolean).map((n) => DOW[+n] || n).join("/");
   const TRIP = { round_trip: "A/R", one_way: "solo andata", same_day: "in giornata" };
-  const STRAT = { threshold: "sotto soglia", drop: "calo di prezzo", deal: "buon affare" };
   let when;
   if (a.horizon_months) when = "prossimi " + a.horizon_months + " mesi";
   else if (a.depart_to && a.depart_to !== a.depart_from) when = fmtDate(a.depart_from) + " – " + fmtDate(a.depart_to);
@@ -681,8 +679,7 @@ function alertDefinition(a) {
   if (a.return_time_from || a.return_time_to)
     bits.push("rit. " + (a.return_time_from || "…") + "–" + (a.return_time_to || "…"));
   if (a.max_stops != null) bits.push(a.max_stops + " scali max");
-  bits.push(STRAT[a.strategy] || a.strategy);
-  if (target) bits.push(target);
+  bits.push(target || "nessuna soglia: tutte le soluzioni");
   return bits.join(" · ");
 }
 
@@ -711,12 +708,15 @@ function alertCard(a) {
     const code = o.destination || a.destination;
     const name = o.destination_name && o.destination_name !== code ? o.destination_name : "";
     const dep = fmtDow(o.depart_date) + " " + fmtDate(o.depart_date) + (o.depart_time ? " " + o.depart_time : "");
-    const ret = o.return_date ? " → " + fmtDow(o.return_date) + " " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time : "") : "";
+    const ret = o.return_date ? " → " + fmtDow(o.return_date) + " " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time + (o.return_arrival_time ? " → " + o.return_arrival_time : "") : "") : "";
     found = '<div class="small text-muted">Offerta più economica</div>'
       + '<div class="mb-1" title="' + esc((name || code) + " (" + code + ")") + '">'
       + '<span class="fw-semibold">' + esc(name || code) + "</span>"
       + (name ? ' <span class="badge text-bg-light border ms-1">' + esc(code) + "</span>" : "") + "</div>"
       + '<div class="text-muted small">' + esc(dep + ret) + "</div>"
+      + ((o.stops != null || (o.carrier_names && o.carrier_names.length))
+        ? '<div class="text-muted small">' + esc([o.stops != null ? stopsLabel(o.stops) : "",
+          (o.carrier_names || []).join(", ")].filter(Boolean).join(" · ")) + "</div>" : "")
       + '<div class="price">' + money(o.price, o.currency || a.currency) + "</div>";
   } else if (a.last_price != null) {
     found = '<div class="price">' + money(a.last_price, a.currency) + "</div>";
@@ -747,8 +747,9 @@ function offerRow(o) {
     + (o.depart_time ? " · " + o.depart_time + (o.arrival_time ? " → " + o.arrival_time : "") : "");
   const ret = o.return_date
     ? '<div class="small">🛬 ' + esc(fmtDow(o.return_date) + " " + fmtDate(o.return_date)
-      + (o.return_time ? " · " + o.return_time : "")) + "</div>" : "";
-  const car = (o.carriers && o.carriers.length) ? o.carriers.map(esc).join(", ") : "";
+      + (o.return_time ? " · " + o.return_time + (o.return_arrival_time ? " → " + o.return_arrival_time : "") : "")) + "</div>" : "";
+  const names = (o.carrier_names && o.carrier_names.length) ? o.carrier_names : (o.carriers || []);
+  const car = names.map(esc).join(", ");
   const meta = [o.stops != null ? stopsLabel(o.stops) : "", car].filter(Boolean).join(" · ");
   return '<div class="col-12 col-md-6 col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">'
     + '<div class="d-flex justify-content-between align-items-start gap-2">'

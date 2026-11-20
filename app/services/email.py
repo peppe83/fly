@@ -9,40 +9,48 @@ from ..config import settings
 
 log = logging.getLogger("flynotify.email")
 
-_REASON_LABEL = {
-    "below_target": "sotto la soglia",
-    "price_drop": "prezzo in calo",
-    "good_deal": "buon affare",
-}
-
-
 def is_configured() -> bool:
     return bool(settings.GMAIL_USER and settings.GMAIL_APP_PASSWORD)
 
 
+def _offer_row(it: dict) -> str:
+    ret = (f'<br><span style="color:#555;font-size:13px;">🛬 {it["ret"]}</span>'
+           if it.get("ret") else "")
+    meta = (f'<br><span style="color:#777;font-size:12px;">{it["meta"]}</span>'
+            if it.get("meta") else "")
+    return f"""
+      <tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #eee;">
+          <strong>{it['route']}</strong><br>
+          <span style="color:#555;font-size:13px;">🛫 {it.get('outbound','')}</span>{ret}{meta}
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">
+          <strong style="color:#0a7d2c;">{it['price']:.0f} {it['currency']}</strong>
+        </td>
+      </tr>"""
+
+
 def build_digest_html(user_name: str | None, items: list[dict]) -> str:
-    """items: dict con route, price, currency, dates, source, reason."""
-    rows = []
+    """items: uno per alert, con title, reason, threshold, currency, offers[]
+    (ogni offerta: route, outbound, ret, meta, price, currency)."""
+    blocks = []
     for it in items:
-        label = _REASON_LABEL.get(it.get("reason", ""), "offerta")
-        rows.append(f"""
-          <tr>
-            <td style="padding:10px 12px;border-bottom:1px solid #eee;">
-              <strong>{it['route']}</strong><br>
-              <span style="color:#555;font-size:13px;">{it.get('dates','')}</span>
-            </td>
-            <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:right;">
-              <strong style="color:#0a7d2c;">{it['price']:.0f} {it['currency']}</strong><br>
-              <span style="font-size:12px;color:#777;">{label} · Fonte: {it.get('source','')}</span>
-            </td>
-          </tr>""")
+        if it.get("threshold") is not None:
+            why = f"Soluzioni sotto la soglia di {it['threshold']:.0f} {it['currency']}"
+        else:
+            why = "Tutte le soluzioni trovate"
+        rows = "".join(_offer_row(o) for o in it["offers"])
+        blocks.append(f"""
+        <h3 style="margin:22px 0 2px;font-size:16px;">{it['title']}</h3>
+        <div style="font-size:12px;color:#777;margin-bottom:6px;">{why} · {len(it['offers'])}</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">{rows}</table>""")
     hello = f"Ciao {user_name}," if user_name else "Ciao,"
     manage = f"{settings.APP_BASE_URL}/alerts"
     return f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:auto;">
-      <h2 style="color:#1a56db;">✈️ flynotify — {len(items)} nuovi avvisi di prezzo</h2>
-      <p>{hello} ecco le offerte che rientrano nei tuoi alert:</p>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">{''.join(rows)}</table>
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:auto;">
+      <h2 style="color:#1a56db;">✈️ flynotify — novità dai tuoi alert</h2>
+      <p>{hello} ecco le soluzioni trovate:</p>
+      {''.join(blocks)}
       <p style="margin-top:18px;font-size:13px;color:#555;">
         <a href="{manage}">Gestisci i tuoi alert</a> ·
         I prezzi sono indicativi e vanno verificati presso la compagnia/agenzia.

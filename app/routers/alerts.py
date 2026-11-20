@@ -9,6 +9,7 @@ from ..deps import get_current_user
 from ..models import Alert, AlertOffer, PriceHistory, User
 from ..providers.run_cache import RunCache
 from ..schemas import AlertCreate
+from ..services.airlines import airline_names
 from ..services.alert_results import decorate, load_offers, save_ranked
 from ..services.places import place
 from ..services.search import SearchService
@@ -34,8 +35,10 @@ def _latest_offer(db: Session, alert_id: str) -> dict | None:
         "destination_name": place(o.get("destination"))["label"],
         "depart_date": o.get("depart_date"), "return_date": o.get("return_date"),
         "depart_time": o.get("depart_time"), "return_time": o.get("return_time"),
+        "arrival_time": o.get("arrival_time"), "return_arrival_time": o.get("return_arrival_time"),
         "price": float(o.get("price")) if o.get("price") is not None else None,
         "currency": o.get("currency"),
+        "stops": o.get("stops"), "carrier_names": airline_names(o.get("carriers")),
         "source": (o.get("source") or {}).get("provider"),
     }
 
