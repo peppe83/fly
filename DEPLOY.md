@@ -171,10 +171,19 @@ Dopo l'installazione, imposta un rinnovo automatico (win-acme crea già un'attiv
 
 ## 7. Worker (alert + email) con Task Scheduler
 
-Il worker è già pronto in `run_worker.bat`. Registralo (da prompt come amministratore):
+È il **worker** che invia le email di avviso (l'app web no). Gira periodicamente e, a
+ogni esecuzione: prende gli utenti il cui intervallo (`poll_interval_hours`) è scaduto,
+valuta i loro alert attivi, aggiorna lo storico prezzi e — se un alert scatta — invia
+**una sola email riepilogativa** per utente, poi aggiorna `last_run_at`. Non manda email
+a ogni giro: solo quando c'è qualcosa di nuovo (con deduplica e tetto `EMAIL_DAILY_CAP`).
+La strategia "buon affare" notifica dal **secondo** giro in poi (il primo crea la baseline).
+Richiede nel `.env`: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ENABLE_ALERTS=true`.
+
+Il worker è già pronto in `run_worker.bat` (indipendente dal percorso: usa la propria
+cartella e il `python.exe` del `.venv`). Registra l'attività (prompt come **amministratore**):
 
 ```bat
-schtasks /Create /TN "flynotify-worker" /TR "D:\webserver\apache24\flynotify\run_worker.bat" /SC MINUTE /MO 30 /RU SYSTEM /RL LIMITED /F
+schtasks /Create /TN "fly-worker" /TR "C:\webserver\python\fly\run_worker.bat" /SC MINUTE /MO 30 /RU SYSTEM /RL HIGHEST /F
 ```
 
 Nelle proprietà dell'attività (Utilità di pianificazione) consigliato spuntare:
@@ -182,7 +191,15 @@ Nelle proprietà dell'attività (Utilità di pianificazione) consigliato spuntar
 - **Esegui l'attività il prima possibile dopo un avvio pianificato non riuscito**.
 
 Assicurati che il VPS **non vada in sospensione** (di norma un server è sempre acceso).
-Prova manuale: `.venv\Scripts\python.exe -m app.worker` e controlla `logs\worker.log`.
+
+Prova manuale e verifica:
+```bat
+schtasks /Run /TN "fly-worker"
+type C:\webserver\python\fly\logs\worker.log
+```
+Stato dei cicli nella tabella `run_log` del database; email inviate in `email_log`.
+Per forzare un giro completo subito, azzera `last_run_at` dell'utente sul DB di produzione
+(il worker salta gli utenti elaborati da meno di `poll_interval_hours`).
 
 ---
 
