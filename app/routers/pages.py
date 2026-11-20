@@ -45,6 +45,13 @@ def alerts_page(request: Request, user: User = Depends(require_user_page)):
     return templates.TemplateResponse(request, "alerts.html", _ctx(request, user))
 
 
+@router.get("/alerts/{alert_id}", response_class=HTMLResponse)
+def alert_detail_page(alert_id: str, request: Request, user: User = Depends(require_user_page)):
+    # La proprietà dell'alert è verificata dall'API /api/alerts/{id}/offers.
+    return templates.TemplateResponse(request, "alert_detail.html",
+                                      _ctx(request, user, alert_id=alert_id))
+
+
 @router.get("/preferences", response_class=HTMLResponse)
 def preferences_page(request: Request, user: User = Depends(require_user_page)):
     return templates.TemplateResponse(request, "preferences.html", _ctx(request, user))

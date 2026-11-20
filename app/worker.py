@@ -1,6 +1,7 @@
 """Worker schedulato (lanciato da Windows Task Scheduler).
 
-Per OGNI utente attivo il cui intervallo personale è scaduto:
+Per OGNI utente attivo "dovuto" (è passato un suo orario di esecuzione scelto nella
+pagina Alert, oppure — se non ne ha scelti — è scaduto il suo intervallo personale):
   - valuta i suoi alert ATTIVI (quelli sospesi vengono saltati);
   - registra lo storico prezzi e, se scatta un avviso, lo accumula;
   - invia UNA email riepilogativa (digest) con tutti gli avvisi dell'utente;
@@ -20,6 +21,8 @@ from .models import Alert, EmailLog, Notification, PriceHistory, RunLog, User
 from .providers.run_cache import RunCache
 from .services import email as email_svc
 from .services.alert_engine import build_dedupe_key, should_notify
+from .services.alert_results import save_ranked
+from .services.schedule import is_due
 from .services.search import SearchService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -33,12 +36,6 @@ def _fmt_date(s: str | None) -> str:
     if s and len(s) >= 10 and s[4] == "-" and s[7] == "-":
         return f"{s[8:10]}-{s[5:7]}-{s[0:4]}"
     return s or ""
-
-
-def _is_due(user: User, now: datetime) -> bool:
-    if user.last_run_at is None:
-        return True
-    return now - user.last_run_at >= timedelta(hours=user.poll_interval_hours)
 
 
 def _history_prices(db, alert_id: str, days: int = 7) -> list[float]:
@@ -75,7 +72,7 @@ def run_worker() -> None:
     try:
         users = db.query(User).filter(User.status == "active").all()
         for user in users:
-            if not _is_due(user, now):
+            if not is_due(user, now):
                 continue
             users_checked += 1
             svc = SearchService(RunCache())      # cache di esecuzione per-utente
@@ -87,12 +84,14 @@ def run_worker() -> None:
                 alerts_checked += 1
                 alert.last_checked = datetime.utcnow()
                 try:
-                    best = svc.best_offer_for_alert(alert)
+                    ranked = svc.ranked_offers_for_alert(alert)
                 except Exception as e:  # noqa: BLE001
                     log.warning("Ricerca fallita alert %s: %s", alert.id, e)
-                    best = None
+                    ranked = []
+                best = ranked[0] if ranked else None
                 if not best:
                     continue
+                save_ranked(db, alert.id, ranked)   # soluzioni mostrate nel dettaglio
 
                 alert.last_price = best.price
                 db.add(PriceHistory(alert_id=alert.id, price=best.price,

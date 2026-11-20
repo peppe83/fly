@@ -190,6 +190,15 @@ Nelle proprietà dell'attività (Utilità di pianificazione) consigliato spuntar
 - **Non avviare una nuova istanza** se è già in esecuzione;
 - **Esegui l'attività il prima possibile dopo un avvio pianificato non riuscito**.
 
+**Orari scelti dall'utente.** Nella pagina *I miei alert* ogni utente sceglie a che ora
+controllare i propri alert (1 orario al giorno; admin/superadmin fino a 4), nel proprio
+fuso orario e a passi di 30 minuti. Il task di Windows deve quindi girare **ogni 30 minuti**
+(come sopra): un orario scatta al primo giro successivo. Chi non ha scelto orari resta sul
+vecchio intervallo (`poll_interval_hours`). Limiti configurabili: `ALERT_RUNS_USER`,
+`ALERT_RUNS_ADMIN`, `ALERT_TIME_STEP_MINUTES`. Serve il pacchetto `tzdata` (già in
+`requirements.txt`) perché Windows non ha il database dei fusi orari; la colonna
+`users.run_times` viene creata da sola all'avvio.
+
 Assicurati che il VPS **non vada in sospensione** (di norma un server è sempre acceso).
 
 Prova manuale e verifica:

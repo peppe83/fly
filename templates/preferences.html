@@ -16,7 +16,8 @@
             {% endif %}
           {% endfor %}
         </select>
-        <div class="form-text">Minimo consentito: {{ settings.MIN_POLL_INTERVAL_HOURS }} ore.</div>
+        <div class="form-text">Minimo consentito: {{ settings.MIN_POLL_INTERVAL_HOURS }} ore.
+          Vale solo se non hai scelto un orario fisso nella pagina <a href="/alerts">I miei alert</a>.</div>
       </div>
       <div class="row g-3">
         <div class="col-6">

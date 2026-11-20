@@ -6,7 +6,8 @@ from ..config import settings
 from ..db import get_db
 from ..deps import get_current_user
 from ..models import User
-from ..schemas import PasswordChange, PreferencesUpdate
+from ..schemas import PasswordChange, PreferencesUpdate, ScheduleUpdate
+from ..services.schedule import schedule_info, validate_times
 from ..security import hash_password, verify_password
 
 router = APIRouter(prefix="/api/me", tags=["preferences"])
@@ -35,6 +36,24 @@ def update_prefs(body: PreferencesUpdate, user: User = Depends(get_current_user)
     db.commit()
     return {"poll_interval_hours": user.poll_interval_hours,
             "currency": user.currency, "timezone": user.timezone}
+
+
+@router.get("/schedule")
+def get_schedule(user: User = Depends(get_current_user)):
+    """Orari in cui il worker controlla gli alert dell'utente (e limiti per ruolo)."""
+    return schedule_info(user)
+
+
+@router.put("/schedule")
+def update_schedule(body: ScheduleUpdate, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    try:
+        times = validate_times(body.run_times, user.role)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    user.run_times = ",".join(times)
+    db.commit()
+    return schedule_info(user)
 
 
 @router.put("/password")

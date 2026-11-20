@@ -167,16 +167,19 @@ class SearchService:
             return False
         return True
 
-    def best_offer_for_alert(self, alert) -> FlightOffer | None:
-        """Offerta migliore (prezzo minimo) per un alert.
+    def ranked_offers_for_alert(self, alert, limit: int | None = None) -> list[FlightOffer]:
+        """Le soluzioni migliori (prezzo crescente) per un alert.
 
         Scandisce le date candidate (weekend scorrevoli, giorni/orari ammessi,
-        tipo viaggio, finestre fisse), applica i filtri e tiene il prezzo minimo.
-        Gli alert usano SOLO il catalogo (Travelpayouts): mai la quota live.
+        tipo viaggio, finestre fisse) e applica i filtri. Per gli alert "ovunque"
+        tiene la più economica per ciascuna destinazione; per una tratta fissa le
+        più economiche tra le date. Gli alert usano SOLO il catalogo (Travelpayouts):
+        mai la quota live.
         """
         from .candidates import candidate_pairs
 
         from ..config import settings
+        limit = limit or settings.ALERT_TOP_OFFERS
         currency = alert.currency or "EUR"
         is_any = alert.destination == "ANY"
         cap = (settings.ALERT_MAX_ANY_CANDIDATES if is_any
@@ -185,7 +188,7 @@ class SearchService:
         if not pairs:
             pairs = [(alert.depart_from, alert.return_from)]
 
-        best: FlightOffer | None = None
+        found: list[FlightOffer] = []
         for depart, ret in pairs:
             dep_s = depart.isoformat()
             ret_s = ret.isoformat() if ret else None
@@ -196,9 +199,21 @@ class SearchService:
                 offers = self.search_offers(alert.origin, alert.destination, dep_s,
                                             ret_s, alert.adults, currency,
                                             include_live=False, exact_date=True)
-            for o in offers:
-                if not self._passes_filters(alert, o):
-                    continue
-                if best is None or o.price < best.price:
-                    best = o
-        return best
+            found += [o for o in offers if self._passes_filters(alert, o)]
+
+        if is_any:   # una proposta (la più economica) per destinazione
+            best_by_dest: dict[str, FlightOffer] = {}
+            for o in found:
+                cur = best_by_dest.get(o.destination)
+                if cur is None or o.price < cur.price:
+                    best_by_dest[o.destination] = o
+            ranked = list(best_by_dest.values())
+        else:        # le più economiche, senza doppioni
+            ranked = list({o.dedupe_key: o for o in sorted(found, key=lambda o: o.price)}.values())
+        ranked.sort(key=lambda o: o.price)
+        return ranked[:limit]
+
+    def best_offer_for_alert(self, alert) -> FlightOffer | None:
+        """Offerta migliore (prezzo minimo) per un alert, o None."""
+        ranked = self.ranked_offers_for_alert(alert, limit=1)
+        return ranked[0] if ranked else None

@@ -362,8 +362,104 @@ function dateCard(d) {
     + sourceBadge(d.source) + "</div></div></div>";
 }
 
+// ----- ORARI DI CONTROLLO DEGLI ALERT ------------------------------------
+// L'utente sceglie a che ora il worker controlla i suoi alert (1 al giorno;
+// admin fino a 4). Gli orari sono nel fuso dell'utente, a passi di 30 minuti.
+function initSchedule() {
+  const summary = document.getElementById("schedSummary");
+  const slotsEl = document.getElementById("schedSlots");
+  const addBtn = document.getElementById("schedAdd");
+  const hint = document.getElementById("schedHint");
+  const msg = document.getElementById("schedMsg");
+  const form = document.getElementById("schedForm");
+  if (!summary || !form) return;
+  let info = null;
+
+  const fmtLocal = (iso) => iso ? fmtDate(iso.slice(0, 10)) + " " + iso.slice(11, 16) : "";
+
+  function options(step, selected) {
+    let html = "";
+    for (let m = 0; m < 1440; m += step) {
+      const v = String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+      html += '<option value="' + v + '"' + (v === selected ? " selected" : "") + ">" + v + "</option>";
+    }
+    return html;
+  }
+
+  function slotRow(value) {
+    const wrap = document.createElement("div");
+    wrap.className = "input-group input-group-sm";
+    wrap.style.width = "9.5rem";
+    wrap.innerHTML = '<select class="form-select sched-time" aria-label="Orario">'
+      + options(info.step_minutes, value) + "</select>"
+      + '<button type="button" class="btn btn-outline-secondary sched-del" aria-label="Rimuovi orario">✕</button>';
+    wrap.querySelector(".sched-del").addEventListener("click", () => { wrap.remove(); sync(); });
+    return wrap;
+  }
+
+  // Mostra/nasconde "+ Aggiungi" e le ✕ in base al limite del ruolo.
+  function sync() {
+    const n = slotsEl.querySelectorAll(".sched-time").length;
+    addBtn.hidden = info.max_runs <= 1 || n >= info.max_runs;
+    slotsEl.querySelectorAll(".sched-del").forEach(b => { b.hidden = n <= 1; });
+  }
+
+  function render() {
+    const t = info.run_times;
+    if (t.length) {
+      summary.innerHTML = "Ogni giorno alle <strong>" + t.map(esc).join(", ") + "</strong>"
+        + (info.next_run_local ? " · prossimo controllo: " + esc(fmtLocal(info.next_run_local)) : "")
+        + (info.last_run_local ? '<br>Ultimo controllo: ' + esc(fmtLocal(info.last_run_local)) : "");
+    } else {
+      summary.innerHTML = "Nessun orario scelto: controllo ogni <strong>" + info.poll_interval_hours
+        + " ore</strong>. Scegli un orario fisso con «Cambia orario»."
+        + (info.last_run_local ? '<br>Ultimo controllo: ' + esc(fmtLocal(info.last_run_local)) : "");
+    }
+    slotsEl.innerHTML = "";
+    (t.length ? t : ["07:00"]).forEach(v => slotsEl.appendChild(slotRow(v)));
+    hint.textContent = (info.max_runs > 1
+        ? "Puoi scegliere fino a " + info.max_runs + " orari al giorno. "
+        : "Un controllo al giorno. ")
+      + "Il controllo parte entro " + info.step_minutes + " minuti dall'orario scelto (fuso "
+      + info.timezone + ").";
+    sync();
+  }
+
+  async function load() {
+    try { info = await api("GET", "/api/me/schedule"); render(); }
+    catch (err) { summary.textContent = err.message; }
+  }
+
+  addBtn.addEventListener("click", () => {
+    const used = [...slotsEl.querySelectorAll(".sched-time")].map(s => s.value);
+    // propone il primo orario "tondo" libero tra 07:00, 13:00, 19:00, 23:00
+    const pick = ["07:00", "13:00", "19:00", "23:00", "10:00", "16:00", "21:00"]
+      .find(v => !used.includes(v)) || "12:00";
+    slotsEl.appendChild(slotRow(pick));
+    sync();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.textContent = "";
+    const times = [...slotsEl.querySelectorAll(".sched-time")].map(s => s.value);
+    try {
+      info = await api("PUT", "/api/me/schedule", { run_times: times });
+      render();
+      msg.className = "small text-success";
+      msg.textContent = "Orari salvati.";
+    } catch (err) {
+      msg.className = "small text-danger";
+      msg.textContent = err.message;
+    }
+  });
+
+  load();
+}
+
 // ----- ALERTS -------------------------------------------------------------
 function initAlerts() {
+  initSchedule();
   const list = document.getElementById("alertsList");
   const form = document.getElementById("alertForm");
   const errBox = document.getElementById("alertFormError");
@@ -444,22 +540,13 @@ function initAlerts() {
   load();
 }
 
-function alertCard(a) {
-  const paused = a.status === "paused";
-  const badge = paused
-    ? '<span class="badge text-bg-secondary">Sospeso</span>'
-    : '<span class="badge text-bg-success">Attivo</span>';
-  const toggle = paused
-    ? '<button class="btn btn-sm btn-outline-success" data-action="resume" data-id="' + a.id + '">Riprendi</button>'
-    : '<button class="btn btn-sm btn-outline-secondary" data-action="suspend" data-id="' + a.id + '">Sospendi</button>';
+// Che cosa cerca un alert (la definizione, non un giorno specifico).
+function alertDefinition(a) {
   const target = a.target_price != null ? "soglia " + money(a.target_price, a.currency) : "";
   const DOW = ["", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
   const dowTxt = (csv) => (csv || "").split(",").filter(Boolean).map((n) => DOW[+n] || n).join("/");
   const TRIP = { round_trip: "A/R", one_way: "solo andata", same_day: "in giornata" };
   const STRAT = { threshold: "sotto soglia", drop: "calo di prezzo", deal: "buon affare" };
-  const dest = a.destination === "ANY" ? "Ovunque 🌍" : a.destination;
-
-  // Che cosa cerca questo alert (la definizione, non un giorno specifico).
   let when;
   if (a.horizon_months) when = "prossimi " + a.horizon_months + " mesi";
   else if (a.depart_to && a.depart_to !== a.depart_from) when = fmtDate(a.depart_from) + " – " + fmtDate(a.depart_to);
@@ -474,16 +561,39 @@ function alertCard(a) {
   if (a.max_stops != null) bits.push(a.max_stops + " scali max");
   bits.push(STRAT[a.strategy] || a.strategy);
   if (target) bits.push(target);
-  const def = '<div class="small text-muted mb-2">' + esc(bits.join(" · ")) + "</div>";
+  return bits.join(" · ");
+}
 
-  // La MIGLIOR offerta trovata: destinazione e giorno reali.
+// Giorno della settimana abbreviato di una data ISO (AAAA-MM-GG).
+function fmtDow(iso) {
+  if (!iso || iso.length < 10) return "";
+  const d = new Date(iso.slice(0, 10) + "T12:00:00");
+  return ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"][d.getDay()] || "";
+}
+
+function alertCard(a) {
+  const paused = a.status === "paused";
+  const badge = paused
+    ? '<span class="badge text-bg-secondary">Sospeso</span>'
+    : '<span class="badge text-bg-success">Attivo</span>';
+  const toggle = paused
+    ? '<button class="btn btn-sm btn-outline-success" data-action="resume" data-id="' + a.id + '">Riprendi</button>'
+    : '<button class="btn btn-sm btn-outline-secondary" data-action="suspend" data-id="' + a.id + '">Sospendi</button>';
+  const dest = a.destination === "ANY" ? "Ovunque 🌍" : a.destination;
+  const def = '<div class="small text-muted mb-2">' + esc(alertDefinition(a)) + "</div>";
+
+  // La MIGLIOR offerta trovata: destinazione (nome completo) e giorno reali.
   let found;
   const o = a.last_offer;
   if (o && o.price != null) {
-    const dep = fmtDate(o.depart_date) + (o.depart_time ? " " + o.depart_time : "");
-    const ret = o.return_date ? " → " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time : "") : "";
-    found = '<div class="mb-1"><span class="badge text-bg-light border me-1">' + esc(o.destination || a.destination) + "</span>"
-      + '<span class="text-muted small">' + esc(dep + ret) + "</span></div>"
+    const code = o.destination || a.destination;
+    const name = o.destination_name && o.destination_name !== code ? o.destination_name : "";
+    const dep = fmtDow(o.depart_date) + " " + fmtDate(o.depart_date) + (o.depart_time ? " " + o.depart_time : "");
+    const ret = o.return_date ? " → " + fmtDow(o.return_date) + " " + fmtDate(o.return_date) + (o.return_time ? " " + o.return_time : "") : "";
+    found = '<div class="mb-1" title="' + esc((name || code) + " (" + code + ")") + '">'
+      + '<span class="fw-semibold">' + esc(name || code) + "</span>"
+      + (name ? ' <span class="badge text-bg-light border ms-1">' + esc(code) + "</span>" : "") + "</div>"
+      + '<div class="text-muted small">' + esc(dep + ret) + "</div>"
       + '<div class="price">' + money(o.price, o.currency || a.currency) + "</div>";
   } else if (a.last_price != null) {
     found = '<div class="price">' + money(a.last_price, a.currency) + "</div>";
@@ -494,12 +604,84 @@ function alertCard(a) {
   return '<div class="col-12 col-md-6"><div class="card shadow-sm h-100 alert-card ' + (paused ? "status-paused" : "") + '">'
     + '<div class="card-body">'
     + '<div class="d-flex justify-content-between align-items-start">'
-    + '<h5 class="card-title mb-1">' + esc(a.origin) + " → " + esc(dest) + "</h5>" + badge + "</div>"
+    + '<h5 class="card-title mb-1"><a class="text-decoration-none text-reset" href="/alerts/' + a.id + '">'
+    + esc(a.origin) + " → " + esc(dest) + "</a></h5>" + badge + "</div>"
     + def
     + found
-    + '<div class="d-flex gap-2 mt-3">' + toggle
+    + '<div class="d-flex flex-wrap gap-2 mt-3">'
+    + '<a class="btn btn-sm btn-primary" href="/alerts/' + a.id + '">Vedi tutte le soluzioni →</a>' + toggle
     + '<button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="' + a.id + '">Elimina</button>'
     + "</div></div></div></div>";
+}
+
+// ----- DETTAGLIO ALERT: tutte le soluzioni trovate ------------------------
+function offerRow(o) {
+  const code = o.destination || "";
+  const name = o.destination_name && o.destination_name !== code ? o.destination_name : "";
+  const dep = fmtDow(o.depart_date) + " " + fmtDate(o.depart_date)
+    + (o.depart_time ? " · " + o.depart_time + (o.arrival_time ? " → " + o.arrival_time : "") : "");
+  const ret = o.return_date
+    ? '<div class="small">🛬 ' + esc(fmtDow(o.return_date) + " " + fmtDate(o.return_date)
+      + (o.return_time ? " · " + o.return_time : "")) + "</div>" : "";
+  const car = (o.carriers && o.carriers.length) ? o.carriers.map(esc).join(", ") : "";
+  const meta = [o.stops != null ? stopsLabel(o.stops) : "", car].filter(Boolean).join(" · ");
+  return '<div class="col-12 col-md-6 col-lg-4"><div class="card shadow-sm h-100"><div class="card-body">'
+    + '<div class="d-flex justify-content-between align-items-start gap-2">'
+    + '<div title="' + esc((name || code) + " (" + code + ")") + '">'
+    + '<div class="fw-semibold">' + esc(name || code) + "</div>"
+    + (name ? '<div class="small text-muted">' + esc(code) + "</div>" : "") + "</div>"
+    + '<div class="price">' + money(o.price, o.currency) + "</div></div>"
+    + '<div class="small mt-2">🛫 ' + esc(dep) + "</div>" + ret
+    + (meta ? '<div class="small text-muted">' + meta + "</div>" : "")
+    + "</div></div></div>";
+}
+
+function initAlertDetail() {
+  const id = window.__ALERT_ID__;
+  const head = document.getElementById("alertHead");
+  const tools = document.getElementById("offerTools");
+  const status = document.getElementById("offerStatus");
+  const list = document.getElementById("offersList");
+  const sortSel = document.getElementById("offerSort");
+  let offers = [];
+
+  function paint() {
+    const key = {
+      price: (x, y) => x.price - y.price,
+      date: (x, y) => (x.depart_date + (x.depart_time || "")).localeCompare(y.depart_date + (y.depart_time || "")),
+      name: (x, y) => (x.destination_name || x.destination || "").localeCompare(y.destination_name || y.destination || "", "it"),
+    }[sortSel.value];
+    list.innerHTML = offers.slice().sort(key).map(offerRow).join("");
+  }
+
+  async function load() {
+    try {
+      const data = await api("GET", "/api/alerts/" + encodeURIComponent(id) + "/offers");
+      const a = data.alert;
+      const dest = a.destination === "ANY" ? "Ovunque 🌍" : a.destination;
+      head.innerHTML = '<h1 class="h4 mb-1">' + esc(a.origin) + " → " + esc(dest) + "</h1>"
+        + '<div class="small text-muted">' + esc(data.origin_name || "") + "</div>"
+        + '<div class="small text-muted">' + esc(alertDefinition(a)) + "</div>";
+      offers = data.offers || [];
+      if (!offers.length) {
+        status.textContent = "Nessuna soluzione ancora: compariranno al prossimo controllo dell'alert.";
+        return;
+      }
+      const when = data.observed_at ? new Date(data.observed_at + "Z") : null;
+      const pad = (n) => String(n).padStart(2, "0");
+      const stamp = when ? fmtDate(when.getFullYear() + "-" + pad(when.getMonth() + 1) + "-" + pad(when.getDate()))
+        + " " + pad(when.getHours()) + ":" + pad(when.getMinutes()) : "";
+      status.textContent = offers.length + (offers.length === 1 ? " soluzione" : " soluzioni")
+        + (stamp ? " · ultimo controllo " + stamp : "")
+        + (data.from_history ? " · storico delle migliori offerte rilevate: l'elenco completo arriva al prossimo controllo" : "");
+      tools.hidden = false;
+      paint();
+    } catch (err) {
+      status.innerHTML = '<span class="text-danger">' + esc(err.message) + "</span>";
+    }
+  }
+  sortSel.addEventListener("change", paint);
+  load();
 }
 
 // ----- PREFERENCES --------------------------------------------------------
@@ -635,6 +817,7 @@ document.addEventListener("DOMContentLoaded", () => {
   switch (window.__PAGE__) {
     case "dashboard": initDashboard(); break;
     case "alerts": initAlerts(); break;
+    case "alert_detail": initAlertDetail(); break;
     case "preferences": initPreferences(); break;
     case "admin": initAdmin(); break;
   }

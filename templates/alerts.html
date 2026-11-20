@@ -6,6 +6,28 @@
   <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#newAlert">+ Nuovo alert</button>
 </div>
 
+<div class="card card-body shadow-sm mb-3" id="schedCard">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <div class="fw-semibold">⏰ Quando controllo i tuoi alert</div>
+      <div class="small text-muted" id="schedSummary">Caricamento…</div>
+    </div>
+    <button class="btn btn-sm btn-outline-primary" type="button"
+            data-bs-toggle="collapse" data-bs-target="#schedEdit">Cambia orario</button>
+  </div>
+  <div class="collapse" id="schedEdit">
+    <form id="schedForm" class="pt-3">
+      <div id="schedSlots" class="d-flex flex-wrap gap-2 mb-2"></div>
+      <button type="button" id="schedAdd" class="btn btn-sm btn-outline-secondary mb-2" hidden>+ Aggiungi orario</button>
+      <div class="form-text mb-3" id="schedHint"></div>
+      <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-sm btn-primary" type="submit">Salva orari</button>
+        <div id="schedMsg" class="small"></div>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="collapse mb-4" id="newAlert">
   <form id="alertForm" class="card card-body shadow-sm">
     <div class="row g-3">

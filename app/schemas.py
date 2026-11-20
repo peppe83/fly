@@ -58,6 +58,10 @@ class PreferencesUpdate(BaseModel):
     timezone: str = "Europe/Rome"
 
 
+class ScheduleUpdate(BaseModel):
+    run_times: list[str]          # orari "HH:MM" nel fuso dell'utente
+
+
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1)
     new_password: str = Field(min_length=8, max_length=128)

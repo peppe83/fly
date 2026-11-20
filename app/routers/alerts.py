@@ -9,6 +9,8 @@ from ..deps import get_current_user
 from ..models import Alert, PriceHistory, User
 from ..providers.run_cache import RunCache
 from ..schemas import AlertCreate
+from ..services.alert_results import decorate, load_offers, save_ranked
+from ..services.places import place
 from ..services.search import SearchService
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -24,6 +26,7 @@ def _latest_offer(db: Session, alert_id: str) -> dict | None:
     o = row.offer_json
     return {
         "destination": o.get("destination"),
+        "destination_name": place(o.get("destination"))["label"],
         "depart_date": o.get("depart_date"), "return_date": o.get("return_date"),
         "depart_time": o.get("depart_time"), "return_time": o.get("return_time"),
         "price": float(o.get("price")) if o.get("price") is not None else None,
@@ -95,13 +98,15 @@ def create_alert(body: AlertCreate, user: User = Depends(get_current_user),
     last_offer = None
     if settings.FIRST_CHECK_ON_CREATE:
         try:
-            best = SearchService(RunCache()).best_offer_for_alert(a)
+            ranked = SearchService(RunCache()).ranked_offers_for_alert(a)
+            best = ranked[0] if ranked else None
             if best:
                 from datetime import datetime
                 a.last_price = best.price
                 a.last_checked = datetime.utcnow()
                 db.add(PriceHistory(alert_id=a.id, price=best.price,
                                     currency=best.currency, offer_json=best.model_dump()))
+                save_ranked(db, a.id, ranked)
                 db.commit()
                 db.refresh(a)
                 last_offer = _latest_offer(db, a.id)
@@ -109,6 +114,17 @@ def create_alert(body: AlertCreate, user: User = Depends(get_current_user),
             pass
 
     return _serialize(a, last_offer)
+
+
+@router.get("/{alert_id}/offers")
+def alert_offers(alert_id: str, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Le soluzioni trovate per l'alert nell'ultimo controllo (pagina di dettaglio)."""
+    a = _get_owned(alert_id, user, db)
+    offers, observed_at, from_history = load_offers(db, a.id)
+    return {"alert": _serialize(a, _latest_offer(db, a.id)),
+            "origin_name": place(a.origin)["label"],
+            "offers": offers, "observed_at": observed_at, "from_history": from_history}
 
 
 @router.post("/{alert_id}/suspend")

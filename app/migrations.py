@@ -44,8 +44,27 @@ def ensure_alert_columns(engine: Engine) -> None:
             log.info("Migrazione: aggiunta colonna alerts.%s", name)
 
 
+_USER_COLUMNS: dict[str, str] = {
+    "run_times": "VARCHAR(40) NULL",
+}
+
+
+def ensure_user_columns(engine: Engine) -> None:
+    have = _existing_columns(engine, "users")
+    if not have:
+        return
+    missing = {k: v for k, v in _USER_COLUMNS.items() if k not in have}
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name, ddl in missing.items():
+            conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+            log.info("Migrazione: aggiunta colonna users.%s", name)
+
+
 def run_migrations(engine: Engine) -> None:
     try:
         ensure_alert_columns(engine)
+        ensure_user_columns(engine)
     except Exception as e:  # noqa: BLE001
         log.warning("Migrazioni non applicate: %s", e)

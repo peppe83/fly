@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     EMAIL_DAILY_CAP: int = 450
 
     # Scheduler / worker
+    # Orari di esecuzione scelti dall'utente (pagina "I miei alert"): quante volte
+    # al giorno, per ruolo, e granularità (= frequenza del task di Windows).
+    ALERT_RUNS_USER: int = 1
+    ALERT_RUNS_ADMIN: int = 4
+    ALERT_TIME_STEP_MINUTES: int = 30
     MIN_POLL_INTERVAL_HOURS: int = 2
     DEFAULT_POLL_INTERVAL_HOURS: int = 6
     WORKER_LOCK_NAME: str = "flynotify_worker"
@@ -83,6 +88,8 @@ class Settings(BaseSettings):
     # coprire ~6 mesi di weekend: Sab+Dom ~52, Ven o Sab ~26.
     ALERT_MAX_CANDIDATES: int = 62
     ALERT_MAX_ANY_CANDIDATES: int = 56
+    # Quante soluzioni (le più economiche) si salvano per alert a ogni controllo.
+    ALERT_TOP_OFFERS: int = 15
 
     # Tetti di piano
     MAX_USERS: int = 50

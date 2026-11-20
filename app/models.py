@@ -29,6 +29,9 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")       # active|suspended
     poll_interval_hours: Mapped[int] = mapped_column(Integer, default=6)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Orari fissi di esecuzione degli alert (CSV "HH:MM" nel fuso dell'utente).
+    # NULL = nessun orario scelto: vale l'intervallo poll_interval_hours.
+    run_times: Mapped[str | None] = mapped_column(String(40), nullable=True)
     timezone: Mapped[str] = mapped_column(String(40), default="Europe/Rome")
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     verified: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -90,6 +93,20 @@ class PriceHistory(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     alert: Mapped["Alert"] = relationship(back_populates="history")
+
+
+class AlertOffer(Base):
+    """Le migliori soluzioni trovate nell'ULTIMO controllo di un alert (sostituite a
+    ogni giro): alimentano la pagina di dettaglio dell'alert. Lo storico dei prezzi
+    migliori resta in price_history."""
+    __tablename__ = "alert_offers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_id: Mapped[str] = mapped_column(String(36), ForeignKey("alerts.id", ondelete="CASCADE"), index=True)
+    rank: Mapped[int] = mapped_column(Integer)                     # 1 = la più economica
+    price: Mapped[float] = mapped_column(Numeric(10, 2))
+    offer_json: Mapped[dict] = mapped_column(JSON)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class Notification(Base):
